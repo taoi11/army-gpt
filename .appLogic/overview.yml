@@ -1,0 +1,91 @@
+website:
+  name: army-gpt
+  description: Collection of AI tools and agents for military personnel
+  deployment: single_docker_container
+
+structure:
+  frontend:
+    components:
+      header:
+        - logo
+        - navigation_tabs:
+            type: simple_tabs
+            tabs:
+              - pace-nots
+              - DOAD-bot
+              - coming_soon
+
+      main_page:
+        - tools_grid:
+            layout: simple_cards
+            components:
+              - tool_card:
+                  - tool_name
+                  - brief_description
+                  - start_button
+
+      chat_interface_template:
+        components:
+          - chat_window:
+              - message_history
+              - input_area
+              - send_button
+          - clear_chat_button
+          - tool_specific_controls
+
+      tool_pages:
+        pace_nots_page:
+          extends: chat_interface_template
+          specific_controls:
+            - custom_parameters
+        
+        doad_bot_page:
+          extends: chat_interface_template
+          specific_controls:
+            - custom_parameters
+        
+        coming_soon_page:
+          - preview_text
+          - feature_list
+
+  backend:
+    server: fastapi  # Light and fast Python framework
+    endpoints:
+      - /api/chat/{tool_id}:
+          methods: [POST]
+          description: Chat completion endpoint for specific tool
+    
+    rate_limiting:
+      by_ip: 60_requests_per_minute  # Simple IP-based rate limiting
+
+    state_management:
+      type: in_memory  # No persistent storage needed
+      chat_history: ephemeral  # Clears on page reload
+
+  ai_agents:
+    pace_nots:
+      - model: gpt_based
+      - specific_parameters
+    
+    doad_bot:
+      - model: gpt_based
+      - specific_parameters
+
+docker:
+  components:
+    - nginx: static_file_serving
+    - fastapi: backend_service
+    - ai_models: local_or_api_calls
+  
+  configuration:
+    ports:
+      - 80:80  # HTTP
+    environment:
+      - AI_API_KEYS
+      - RATE_LIMIT_SETTINGS
+
+monitoring:
+  basic_metrics:
+    - server_health
+    - request_count
+    - error_logs
