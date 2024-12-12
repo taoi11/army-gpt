@@ -18,7 +18,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN mkdir -p /app/static
 
 # Copy the application
-COPY src/frontend/static /app/static
 COPY src /app/src
 
 # Create volume mount point for static files
