@@ -45,7 +45,11 @@ class LLMProvider:
         except Exception as e:
             # If primary fails, try backup
             logger.error(f"Primary LLM error: {str(e)}")
-            return self._backup_completion(prompt, system_prompt, backup_options or {}, request_id)
+            try:
+                return self._backup_completion(prompt, system_prompt, backup_options or {}, request_id)
+            except Exception as backup_error:
+                logger.error(f"Backup LLM error: {str(backup_error)}")
+                raise  # Re-raise the backup error
 
     def _primary_completion(
         self, 
@@ -60,8 +64,7 @@ class LLMProvider:
             headers={
                 "Authorization": f"Bearer {self.primary_api_key}",
                 "HTTP-Referer": "http://localhost:8020",
-                "Content-Type": "application/json",
-                "X-Request-ID": request_id
+                "Content-Type": "application/json"
             },
             json={
                 "model": self.pace_model,
@@ -85,13 +88,13 @@ class LLMProvider:
     ) -> str:
         """Generate completion using backup LLM (Ollama)"""
         response = requests.post(
-            f"{self.backup_base_url}/api/generate",
-            headers={
-                "X-Request-ID": request_id
-            },
+            f"{self.backup_base_url}/api/chat",  # Use /api/chat endpoint
             json={
                 "model": self.backup_pace_model,
-                "prompt": f"{system_prompt}\n\nUser: {prompt}\nAssistant:",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ],
                 "stream": False,
                 "options": options
             },
@@ -100,8 +103,8 @@ class LLMProvider:
         response.raise_for_status()
         
         result = response.json()
-        if "response" in result:
-            return result["response"]
+        if "message" in result:
+            return result["message"]["content"]
         
         logger.error(f"Unexpected Ollama response format: {result}")
         raise ValueError("Unexpected response format from backup LLM")
