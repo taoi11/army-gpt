@@ -52,9 +52,7 @@ async def pace_notes(request: Request):
 
 # Import and include routers
 from .routes import router as pace_notes_router
-from .keycheck import router as credits_router
 
 app.include_router(pace_notes_router)
-app.include_router(credits_router)
 
 logger.info("FastAPI application initialized with rate limiting") 

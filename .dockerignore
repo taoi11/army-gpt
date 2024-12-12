@@ -1,18 +1,16 @@
-# Environment stuff
+# Python
+__pycache__/
+*.pyc
+
+# Environment
 .env
 
-# Notes and temp data
-/data
-/src/data
+# Project specific
 /.appLogic
 /notepad
+/data
+/src/data
 
-# Tests
-/test
-
-# Ignore gitignore file
+# Git
+.git/
 .gitignore
-
-# Docker files
-Dockerfile
-docker-compose.yml

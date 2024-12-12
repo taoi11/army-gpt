@@ -1,9 +1,6 @@
 import os
 import requests
-from fastapi import APIRouter
 from src.backend.utils.logger import logger
-
-router = APIRouter(prefix="/llm")
 
 # Global variable to track credit status
 CREDITS_AVAILABLE = True
@@ -13,6 +10,8 @@ def check_credits():
     global CREDITS_AVAILABLE
     
     api_key = os.getenv("OPENROUTER_API_KEY")
+    base_url = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
+    
     if not api_key:
         logger.error("OPENROUTER_API_KEY not found")
         CREDITS_AVAILABLE = False
@@ -20,7 +19,7 @@ def check_credits():
         
     try:
         response = requests.get(
-            "https://openrouter.ai/api/v1/auth/key",
+            f"{base_url}/auth/key",
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=5.0
         )
@@ -38,11 +37,6 @@ def check_credits():
         logger.error(f"Error checking OpenRouter credits: {str(e)}")
         CREDITS_AVAILABLE = False
         return False
-
-@router.get("/credits")
-async def get_credits_status():
-    """Return current credit status"""
-    return {"credits_available": CREDITS_AVAILABLE}
 
 # Run initial check on module import
 logger.info("Running initial OpenRouter credits check")

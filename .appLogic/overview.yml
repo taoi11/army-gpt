@@ -6,6 +6,24 @@ website:
     - Keep user messages out of logs and browser side only
     - Keep user identifiable data out of logs and browser side only
     - Provide a simple interface for users to interact with the tools and agents
+  
+  llm_strategy:
+    primary:
+      provider: OpenRouter
+      credit_check:
+        interval: 5 minutes
+        endpoint: https://openrouter.ai/api/v1/auth/key
+        on_failure: switch to backup
+    backup:
+      provider: Ollama
+      when_used:
+        - Primary LLM credit exhaustion
+        - Primary LLM failures
+      user_notification:
+        type: banner
+        position: header
+        style: amber warning
+        message: "⚠️ Using Slow and Stupid AI - Out of Money for the Fast and Smart AI"
 
 directory_structure: |
   army-gpt/
@@ -27,6 +45,7 @@ directory_structure: |
   │   │   │   ├── __init__.py
   │   │   │   ├── provider.py
   │   │   │   ├── routes.py        # API endpoints for LLM tools
+  │   │   │   ├── keycheck.py      # Credit check implementation
   │   │   │   └── monitoring.py
   │   │   ├── pacenote/    # Pace notes module
   │   │   │   └── __init__.py      # Contains PaceNoteAgent
@@ -55,6 +74,11 @@ structure:
               - pace-notes
               - policy-foo
               - coming_soon
+        - llm_status:
+            type: banner
+            position: between_title_and_nav
+            visibility: dynamic
+            check_interval: 5 minutes
       main_page:
         - tools_grid:
             layout: simple_cards
@@ -87,6 +111,9 @@ structure:
       - /llm/pace-notes/generate:
           methods: [POST]
           description: Generate pace notes using LLM
+      - /llm/credits:
+          methods: [GET]
+          description: Get current LLM credit status
     
     rate_limiting:
       strategy: sliding_window

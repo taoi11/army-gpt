@@ -1,5 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+
+# Environment
 .env
+venv/
 
 # Temp data
 /data
 /src/data
+/notepad
+
+# IDE
+.vscode/
+*.code-workspace

@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from src.backend.utils.logger import logger
 from src.backend.pacenote import pace_note_agent
+from .keycheck import CREDITS_AVAILABLE
 
 router = APIRouter(prefix="/llm")
 
@@ -13,6 +14,11 @@ class PaceNoteRequest(BaseModel):
 class PaceNoteResponse(BaseModel):
     note: str
     remaining_requests: dict
+
+@router.get("/credits")
+async def get_credits_status():
+    """Return current credit status"""
+    return {"credits_available": CREDITS_AVAILABLE}
 
 @router.post("/pace-notes/generate", response_model=PaceNoteResponse)
 async def generate_pace_note(
