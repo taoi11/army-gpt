@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 from fastapi import Request
@@ -36,9 +35,6 @@ app.add_middleware(MetricsMiddleware)
 
 # Add error handler
 app.add_exception_handler(Exception, error_handler)
-
-# Mount static files
-app.mount("/static", StaticFiles(directory="src/frontend/static"), name="static")
 
 # Root route
 @app.get("/", response_class=HTMLResponse)

@@ -4,6 +4,7 @@ services:
     build: 
       context: .
       dockerfile: Dockerfile
+    image: ghcr.io/taoi11/army-gpt:main
     container_name: army-gpt
     ports:
       - "8020:8020"
