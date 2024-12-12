@@ -1,20 +1,22 @@
 website:
   name: army-gpt
-  description: Collection of AI tools and agents for military personnel
-  deployment: single_docker_container
+  description: Collection of AI tools and agents for army dudes
+  deployment: single docker container
+  ethos and intent:
+    - Keep user messages out of logs and browser side only
+    - Keep user identifiable data out of logs and browser side only
+    - Provide a simple interface for users to interact with the tools and agents
 
 structure:
   frontend:
     components:
       header:
-        - logo
         - navigation_tabs:
             type: simple_tabs
             tabs:
-              - pace-nots
-              - DOAD-bot
+              - pace-notes
+              - policy-foo
               - coming_soon
-
       main_page:
         - tools_grid:
             layout: simple_cards
@@ -22,70 +24,66 @@ structure:
               - tool_card:
                   - tool_name
                   - brief_description
-                  - start_button
-
-      chat_interface_template:
-        components:
-          - chat_window:
-              - message_history
-              - input_area
-              - send_button
-          - clear_chat_button
-          - tool_specific_controls
+                  - donate_button # will implement at end of project
+        - costs_accrued:
+            - small section keeping tally of costs accrued from LLM API calls and server rent.
+            - top right and out of the way
+            - only updates once, at initial page load
+            - keep data in /data/costs.json
+        - metrics_and_logs:
+            - declare to the user all metrics and logs in a simple way
+            - explain what is logged and stored
+            - explain what is held temporarily and what is held permanently
+            - explain why telemetry is collected
 
       tool_pages:
-        pace_nots_page:
-          extends: chat_interface_template
-          specific_controls:
-            - custom_parameters
-        
-        doad_bot_page:
-          extends: chat_interface_template
-          specific_controls:
-            - custom_parameters
-        
-        coming_soon_page:
-          - preview_text
-          - feature_list
+        pace_notes_page: /.appLogic/pace-note.yml
+        policy_foo_page: /.appLogic/policy-foo.yml
+        coming_soon_page: 
 
   backend:
-    server: fastapi  # Light and fast Python framework
+    server: fastapi
+    knowledge_base:
+      - /policies
     endpoints:
-      - /api/chat/{tool_id}:
+      - /api/{tool_id}/<as_needed>:
           methods: [POST]
           description: Chat completion endpoint for specific tool
     
     rate_limiting:
-      by_ip: 60_requests_per_minute  # Simple IP-based rate limiting
-
+      strategy: sliding_window
+      identification:
+        primary: ip_address
+        secondary:
+          - session_token:
+              type: jwt
+              expiry: 24 hours
+              purpose: session_token
+      limits:
+        - 15 requests [user-messages] per hour
+        - 50 requests [user-messages] per day
     state_management:
-      type: in_memory  # No persistent storage needed
-      chat_history: ephemeral  # Clears on page reload
-
-  ai_agents:
-    pace_nots:
-      - model: gpt_based
-      - specific_parameters
-    
-    doad_bot:
-      - model: gpt_based
-      - specific_parameters
+      type: in_memory
+      chat_history: ephemeral
+    tools_and_agents:
+      - pace_notes: /.appLogic/pace_notes.yml
+      - policy_foo: /.appLogic/policy_foo.yml
 
 docker:
-  components:
-    - nginx: static_file_serving
-    - fastapi: backend_service
-    - ai_models: local_or_api_calls
-  
   configuration:
     ports:
-      - 80:80  # HTTP
+      - 8020:8020
     environment:
       - AI_API_KEYS
       - RATE_LIMIT_SETTINGS
+    volumes:
+      - ./data:/data
 
 monitoring:
-  basic_metrics:
+  basic_metrics: # open telemetry compatible metrics
+    - No logging of user data
+    - No logging of user messages # unless in debug mode
     - server_health
-    - request_count
+    - request_counts and rates
+    - user_counts and activity
     - error_logs

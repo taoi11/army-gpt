@@ -1,0 +1,88 @@
+# pace_notes.yml
+
+tool:
+  name: pace-notes
+  description: An AI tool that generates pace notes for CAF Members
+
+Frontend:
+  chat_interface:
+    UI_layout:
+      - navigation_bar: top
+      - chat_history: none
+      - user_input: text_input
+      - submit_button: send
+      - response_output: text_output
+      - dropdown_menu: rank selection
+        dynamic_options:
+          - path: /policies/pace_notes/compitences-{rank}.md # the user only sees the {rank} in the dropdown menu
+knowledge_base:
+  sources:
+    - type: files
+      path: /policies/pace_notes/compitences-{rank}.md
+      format: markdown
+      usage:
+        - dynamically added into LLM system prompt
+    - type: files
+      path: /prompts/pace_notes/examples.md
+      format: markdown
+      usage:
+        - dynamically added into LLM system prompt
+    - type: files
+      path: /prompts/pace_notes/system_prompt.md
+      format: markdown
+      usage:
+        - main system prompt for the tool
+endpoints:
+  chat:
+    path: /api/pace-notes/chat
+    methods: [POST]
+    description: Chat completion endpoint for pace notes tool
+    parameters:
+      temperature: 0.1
+  metrics:
+    - path: /metrics
+      methods: [GET]
+      description: Metrics endpoint prometheus compatible
+    - path: /health
+      methods: [GET]
+      description: Health check endpoint
+
+  LLM_provider:
+    - type: primary  
+      framework: openai_api # python library
+      base_url: env var # default: openrouter.ai
+      api_key: env var
+      model: env var
+    - type: back_up
+      framework: ollama # python library
+      base_url: env var
+      api_key: null
+      model: env var
+
+state_management:
+  type: in_memory
+  chat_history: ephemeral
+
+security:
+  authentication:
+    required: true
+    method: jwt
+  rate_limiting:
+    strategy: sliding_window
+    identification:
+      primary: ip_address
+      secondary:
+        - session_token:
+            type: jwt
+            expiry: 24 hours
+            purpose: session_token
+
+monitoring and logging:
+  basic_metrics: # open telemetry compatible metrics
+    - No logging of user data
+    - No logging of user messages # unless in debug mode
+    - All logs are in memory only
+    - server_health
+    - Request and general usage
+    - Active users per 15 minute intervals
+    - error_logs
