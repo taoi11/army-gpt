@@ -3,6 +3,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List
 import os
+import json
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from .logger import logger
@@ -21,12 +22,21 @@ class RateLimit:
         now = time.time()
         # Remove old requests
         self.requests = [t for t in self.requests if now - t < self.window_seconds]
-        
-        if len(self.requests) >= self.max_requests:
-            return False
-            
+        return len(self.requests) < self.max_requests
+
+    def add_request(self):
+        """Add a request to the list"""
+        now = time.time()
+        # Clean expired requests first
+        self.requests = [t for t in self.requests if now - t < self.window_seconds]
         self.requests.append(now)
-        return True
+
+    def get_remaining(self) -> int:
+        """Get remaining requests"""
+        now = time.time()
+        # Only count requests that aren't expired
+        valid_requests = [t for t in self.requests if now - t < self.window_seconds]
+        return self.max_requests - len(valid_requests)
 
 class RateLimiter:
     def __init__(self):
@@ -42,11 +52,18 @@ class RateLimiter:
         self.daily_limits: Dict[str, RateLimit] = defaultdict(
             lambda: RateLimit(self.daily_limit, 86400)
         )
+        
+        # Track requests in progress to avoid double counting
+        self.requests_in_progress: Dict[str, set] = defaultdict(set)
 
-    def is_allowed(self, ip: str) -> bool:
+    def is_allowed(self, ip: str, request_id: str = None) -> bool:
         """Check if request is allowed for given IP"""
         # Always allow in debug mode
         if self.debug_mode:
+            return True
+
+        # If this is a retry (has request_id and is in progress), allow it
+        if request_id and request_id in self.requests_in_progress[ip]:
             return True
 
         # Check both hourly and daily limits
@@ -60,7 +77,23 @@ class RateLimiter:
             logger.warning(f"IP {ip} exceeded daily rate limit")
             return False
 
+        # Track new request if it has an ID
+        if request_id:
+            self.requests_in_progress[ip].add(request_id)
+
         return True
+
+    def record_request(self, ip: str, request_id: str = None):
+        """Record a successful request"""
+        if not self.debug_mode:
+            # Only record if it's a new request or no request_id provided
+            if not request_id or request_id not in self.requests_in_progress[ip]:
+                self.hourly_limits[ip].add_request()
+                self.daily_limits[ip].add_request()
+            
+            # Clean up tracking
+            if request_id:
+                self.requests_in_progress[ip].discard(request_id)
 
     def get_remaining(self, ip: str) -> Dict[str, int]:
         """Get remaining requests for given IP"""
@@ -71,15 +104,13 @@ class RateLimiter:
                 "daily_remaining": self.daily_limit
             }
 
-        now = time.time()
-        
-        # Clean up old requests
-        hourly_requests = [t for t in self.hourly_limits[ip].requests if now - t < 3600]
-        daily_requests = [t for t in self.daily_limits[ip].requests if now - t < 86400]
-        
+        # Clean up expired requests before getting count
+        self.hourly_limits[ip].is_allowed()  # This cleans up expired requests
+        self.daily_limits[ip].is_allowed()   # This cleans up expired requests
+
         return {
-            "hourly_remaining": self.hourly_limit - len(hourly_requests),
-            "daily_remaining": self.daily_limit - len(daily_requests)
+            "hourly_remaining": self.hourly_limits[ip].get_remaining(),
+            "daily_remaining": self.daily_limits[ip].get_remaining()
         }
 
 # Create singleton instance
@@ -87,28 +118,53 @@ rate_limiter = RateLimiter()
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
-        # Skip rate limiting for static files and non-API routes
-        if not request.url.path.startswith("/llm"):
-            return await call_next(request)
-
         # Get client IP
         client_ip = request.client.host
         
-        # Check rate limit (will automatically pass if in debug mode)
-        if not rate_limiter.is_allowed(client_ip):
-            remaining = rate_limiter.get_remaining(client_ip)
-            return Response(
-                content="Rate limit exceeded",
-                status_code=429,
-                headers={
-                    "X-RateLimit-Remaining-Hour": str(remaining["hourly_remaining"]),
-                    "X-RateLimit-Remaining-Day": str(remaining["daily_remaining"])
+        # Only check and enforce rate limits for LLM API calls
+        is_llm_api = request.url.path.startswith("/llm") and request.method == "POST"
+        
+        # Get request ID from header if present (for retries/backup attempts)
+        request_id = request.headers.get("X-Request-ID")
+        
+        if is_llm_api:
+            if not rate_limiter.is_allowed(client_ip, request_id):
+                remaining = rate_limiter.get_remaining(client_ip)
+                error_response = {
+                    "error": {
+                        "code": 429,
+                        "message": "Rate limit exceeded",
+                        "details": {
+                            "hourly_remaining": remaining["hourly_remaining"],
+                            "daily_remaining": remaining["daily_remaining"],
+                            "hourly_limit": rate_limiter.hourly_limit,
+                            "daily_limit": rate_limiter.daily_limit,
+                            "retry_after": "Wait for the next hour or day depending on which limit was exceeded"
+                        }
+                    }
                 }
-            )
-            
-        # Add rate limit headers to response
+                return Response(
+                    content=json.dumps(error_response),
+                    status_code=429,
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-RateLimit-Remaining-Hour": str(remaining["hourly_remaining"]),
+                        "X-RateLimit-Remaining-Day": str(remaining["daily_remaining"])
+                    }
+                )
+        
+        # Process the request
         response = await call_next(request)
-        remaining = rate_limiter.get_remaining(client_ip)
+        
+        # Record only LLM API calls
+        if is_llm_api:
+            rate_limiter.record_request(client_ip, request_id)
+            remaining = rate_limiter.get_remaining(client_ip)
+        else:
+            # For non-API routes or GET requests, just get current limits
+            remaining = rate_limiter.get_remaining(client_ip)
+        
+        # Always add rate limit headers
         response.headers["X-RateLimit-Remaining-Hour"] = str(remaining["hourly_remaining"])
         response.headers["X-RateLimit-Remaining-Day"] = str(remaining["daily_remaining"])
         

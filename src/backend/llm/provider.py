@@ -1,6 +1,7 @@
 import os
 import requests
 import json
+import uuid
 from typing import Dict, Optional
 from src.backend.utils.logger import logger
 from .keycheck import CREDITS_AVAILABLE
@@ -25,26 +26,33 @@ class LLMProvider:
         prompt: str, 
         system_prompt: str,
         temperature: float = 0.1,
+        request_id: str = None,
+        tool: str = "pace-note"  # Identify which tool is making the request
     ) -> Optional[str]:
         """Generate completion using either primary or backup LLM based on credits"""
+        # Generate request ID if not provided
+        if not request_id:
+            request_id = str(uuid.uuid4())
+
         try:
             # Use backup if no credits available
             if not CREDITS_AVAILABLE:
                 logger.info("No credits available, using backup LLM")
-                return self._backup_completion(prompt, system_prompt, temperature)
+                return self._backup_completion(prompt, system_prompt, temperature, request_id, tool)
             
             # Try primary LLM
-            return self._primary_completion(prompt, system_prompt, temperature)
+            return self._primary_completion(prompt, system_prompt, temperature, request_id)
         except Exception as e:
             # If primary fails, try backup
             logger.error(f"Primary LLM error: {str(e)}")
-            return self._backup_completion(prompt, system_prompt, temperature)
+            return self._backup_completion(prompt, system_prompt, temperature, request_id, tool)
 
     def _primary_completion(
         self, 
         prompt: str, 
         system_prompt: str,
-        temperature: float
+        temperature: float,
+        request_id: str
     ) -> str:
         """Generate completion using primary LLM (OpenRouter)"""
         response = requests.post(
@@ -52,7 +60,8 @@ class LLMProvider:
             headers={
                 "Authorization": f"Bearer {self.primary_api_key}",
                 "HTTP-Referer": "http://localhost:8020",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "X-Request-ID": request_id
             },
             json={
                 "model": self.pace_model,
@@ -71,18 +80,33 @@ class LLMProvider:
         self, 
         prompt: str, 
         system_prompt: str,
-        temperature: float
+        temperature: float,
+        request_id: str,
+        tool: str
     ) -> str:
         """Generate completion using backup LLM (Ollama)"""
+        # Set Ollama options based on the tool
+        options = {
+            "temperature": temperature
+        }
+        
+        # Add specific options for pace-note tool
+        if tool == "pace-note":
+            options.update({
+                "num_ctx": 14336,      # Context window size
+                "num_batch": 256,      # Batch size for processing
+            })
+
         response = requests.post(
             f"{self.backup_base_url}/api/generate",
+            headers={
+                "X-Request-ID": request_id
+            },
             json={
                 "model": self.backup_pace_model,
                 "prompt": f"{system_prompt}\n\nUser: {prompt}\nAssistant:",
                 "stream": False,
-                "options": {
-                    "temperature": temperature
-                }
+                "options": options
             },
             timeout=self.backup_timeout
         )

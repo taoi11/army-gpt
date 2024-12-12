@@ -1,6 +1,7 @@
 from src.backend.utils.logger import logger
 from src.backend.llm.provider import llm_provider
 from src.backend.utils.monitoring import track_api_call
+import uuid
 
 class PaceNoteAgent:
     """Agent for generating pace notes"""
@@ -28,9 +29,13 @@ class PaceNoteAgent:
             return None
 
     @staticmethod
-    def generate(content: str, temperature: float = 0.1) -> str:
+    def generate(content: str, temperature: float = 0.1, request_id: str = None) -> str:
         """Generate a pace note using the LLM"""
         try:
+            # Generate request ID if not provided
+            if not request_id:
+                request_id = str(uuid.uuid4())
+
             # Track API call
             track_api_call("pace_note_generate", "started")
             
@@ -44,7 +49,9 @@ class PaceNoteAgent:
             note = llm_provider.generate_completion(
                 prompt=content,
                 system_prompt=system_prompt,
-                temperature=temperature
+                temperature=temperature,
+                request_id=request_id,
+                tool="pace-note"  # Explicitly identify this as pace-note tool
             )
             
             if note:

@@ -4,6 +4,8 @@ from typing import Optional
 from src.backend.utils.logger import logger
 from src.backend.pacenote import pace_note_agent
 from .keycheck import CREDITS_AVAILABLE
+from src.backend.utils.rate_limit import rate_limiter
+import uuid
 
 router = APIRouter(prefix="/llm")
 
@@ -23,13 +25,18 @@ async def get_credits_status():
 @router.post("/pace-notes/generate", response_model=PaceNoteResponse)
 async def generate_pace_note(
     request: PaceNoteRequest,
-    client_ip: str = None
+    client_request: Request
 ):
     """Generate a pace note"""
     try:
+        # Generate request ID
+        request_id = str(uuid.uuid4())
+        client_request.state.request_id = request_id
+
         note = pace_note_agent.generate(
             content=request.content,
-            temperature=request.temperature
+            temperature=request.temperature,
+            request_id=request_id
         )
 
         if note is None:
@@ -38,11 +45,12 @@ async def generate_pace_note(
                 detail="Failed to generate note. Please try again later."
             )
 
+        # Let the middleware handle rate limit tracking
         return PaceNoteResponse(
             note=note,
             remaining_requests={
-                "hourly_remaining": 999,  # These will be overwritten by middleware
-                "daily_remaining": 999
+                "hourly_remaining": 0,  # Will be set by middleware
+                "daily_remaining": 0
             }
         )
 

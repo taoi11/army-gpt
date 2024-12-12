@@ -97,9 +97,30 @@
             }
         }
 
-        // Check credits on page load and every 5 minutes
+        // Add this function to check rate limits
+        async function updateRateLimits() {
+            try {
+                const response = await fetch('/api/limits', {
+                    method: 'GET',
+                });
+                if (response.ok) {
+                    document.getElementById('hourlyRemaining').textContent = 
+                        response.headers.get('X-RateLimit-Remaining-Hour') || '15';
+                    document.getElementById('dailyRemaining').textContent = 
+                        response.headers.get('X-RateLimit-Remaining-Day') || '50';
+                }
+            } catch (error) {
+                console.error('Error updating rate limits:', error);
+            }
+        }
+
+        // Check credits and rate limits on page load
         checkCredits();
+        updateRateLimits();
+
+        // Set up intervals
         setInterval(checkCredits, 5 * 60 * 1000);
+        setInterval(updateRateLimits, 30 * 1000);  // Update rate limits every 30 seconds
 
         const MAX_RESPONSES = 5;  // Maximum number of response cards to keep
 
@@ -135,11 +156,11 @@
 
                 const data = await response.json();
                 
-                // Update rate limits
+                // Update rate limits from headers
                 document.getElementById('hourlyRemaining').textContent = 
-                    data.remaining_requests.hourly_remaining;
+                    response.headers.get('X-RateLimit-Remaining-Hour') || '--';
                 document.getElementById('dailyRemaining').textContent = 
-                    data.remaining_requests.daily_remaining;
+                    response.headers.get('X-RateLimit-Remaining-Day') || '--';
                 
                 // Create new response box
                 const responseBox = document.createElement('div');

@@ -1,12 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
-from fastapi import Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from src.backend.utils.monitoring import MetricsMiddleware
 from src.backend.utils.logger import logger
 from src.backend.utils.errors import error_handler
-from src.backend.utils.rate_limit import RateLimitMiddleware
+from src.backend.utils.rate_limit import RateLimitMiddleware, rate_limiter
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -45,6 +44,19 @@ async def root(request: Request):
 @app.get("/pace-notes", response_class=HTMLResponse)
 async def pace_notes(request: Request):
     return templates.TemplateResponse("pace-notes.html", {"request": request})
+
+# Rate limits endpoint
+@app.get("/api/limits")
+async def get_rate_limits(request: Request):
+    """Get current rate limits without affecting the count"""
+    remaining = rate_limiter.get_remaining(request.client.host)
+    return JSONResponse(
+        content={"message": "ok"},
+        headers={
+            "X-RateLimit-Remaining-Hour": str(remaining["hourly_remaining"]),
+            "X-RateLimit-Remaining-Day": str(remaining["daily_remaining"])
+        }
+    )
 
 # Import and include routers
 from .routes import router as pace_notes_router
