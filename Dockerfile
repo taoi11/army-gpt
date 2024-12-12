@@ -1,12 +1,21 @@
-FROM python:slim
+FROM python:3.11-slim
 
 # Set working directory
 WORKDIR /app
 
-# Install curl for healthcheck
+# Install system dependencies and Rust
 RUN apt-get update && \
-    apt-get install -y curl && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y \
+    curl \
+    gcc \
+    python3-dev \
+    libffi-dev \
+    pkg-config \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add cargo to PATH
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Copy requirements first for better caching
 COPY requirements.txt .
@@ -14,14 +23,8 @@ COPY requirements.txt .
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create static directory
-RUN mkdir -p /app/static
-
 # Copy the application
 COPY src /app/src
-
-# Create volume mount point for static files
-VOLUME ["/app/static"]
 
 # Expose the port
 EXPOSE 8020
