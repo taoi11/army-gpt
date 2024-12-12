@@ -55,9 +55,9 @@ class PaceNoteAgent:
             return note
             
         except Exception as e:
-            logger.error(f"Error generating pace note: {e}")
+            logger.error(f"Error generating pace note: {str(e)}")
             track_api_call("pace_note_generate", "error")
-            return None
+            raise
 
 # Create singleton instance
 pace_note_agent = PaceNoteAgent() 

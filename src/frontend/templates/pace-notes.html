@@ -17,7 +17,12 @@
     <header class="bg-gray-800 text-white">
         <nav class="container mx-auto px-6 py-4">
             <div class="flex items-center justify-between">
-                <div class="text-xl font-bold">Army-GPT</div>
+                <div class="flex items-center space-x-4">
+                    <div class="text-xl font-bold">Army-GPT</div>
+                    <div id="creditsBanner" class="hidden px-2 py-1 bg-amber-500 text-white text-sm rounded">
+                        ⚠️ Using Slow and Stupid AI - Out of Money for the Fast and Smart AI
+                    </div>
+                </div>
                 <div class="space-x-4">
                     <a href="/" class="hover:text-gray-300">Home</a>
                     <a href="/pace-notes" class="text-blue-400 hover:text-blue-300">Pace Notes</a>
@@ -71,15 +76,31 @@
         </div>
     </main>
 
-    <!-- Footer -->
-    <footer class="bg-gray-800 text-white mt-12">
-        <div class="container mx-auto px-6 py-4 text-center">
-            <p>&copy; 2023 Army-GPT. All rights reserved.</p>
-        </div>
-    </footer>
-
     <!-- JavaScript -->
     <script>
+        // Check credits status on page load
+        async function checkCredits() {
+            try {
+                const response = await fetch('/llm/credits');
+                const data = await response.json();
+                const banner = document.getElementById('creditsBanner');
+                
+                if (!data.credits_available) {
+                    banner.classList.remove('hidden');
+                } else {
+                    banner.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Error checking credits:', error);
+            }
+        }
+
+        // Check credits on page load and every 5 minutes
+        checkCredits();
+        setInterval(checkCredits, 5 * 60 * 1000);
+
+        const MAX_RESPONSES = 5;  // Maximum number of response cards to keep
+
         document.getElementById('paceNoteForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
@@ -94,7 +115,7 @@
 
             try {
                 // Call API
-                const response = await fetch('/api/pace-notes/generate', {
+                const response = await fetch('/llm/pace-notes/generate', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -137,11 +158,14 @@
                 const resultsContainer = document.getElementById('resultsContainer');
                 resultsContainer.insertBefore(responseBox, resultsContainer.firstChild);
 
+                // Remove old responses if we have more than MAX_RESPONSES
+                const responses = resultsContainer.getElementsByClassName('response-container');
+                while (responses.length > MAX_RESPONSES) {
+                    resultsContainer.removeChild(responses[responses.length - 1]);
+                }
+
                 // Scroll to new response
                 responseBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-                // Clear input
-                document.getElementById('userInput').value = '';
 
             } catch (error) {
                 console.error('Error generating note:', error);

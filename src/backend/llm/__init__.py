@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
+from fastapi import Request
 from src.backend.utils.monitoring import MetricsMiddleware
 from src.backend.utils.logger import logger
 from src.backend.utils.errors import error_handler
@@ -12,6 +15,9 @@ app = FastAPI(
     description="Collection of AI tools and agents for army dudes",
     version="1.0.0"
 )
+
+# Setup templates
+templates = Jinja2Templates(directory="src/frontend/templates")
 
 # Setup CORS
 app.add_middleware(
@@ -34,8 +40,21 @@ app.add_exception_handler(Exception, error_handler)
 # Mount static files
 app.mount("/static", StaticFiles(directory="src/frontend/static"), name="static")
 
-# Import and include main router
-from .routes import router
-app.include_router(router)
+# Root route
+@app.get("/", response_class=HTMLResponse)
+async def root(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+# Pace notes route
+@app.get("/pace-notes", response_class=HTMLResponse)
+async def pace_notes(request: Request):
+    return templates.TemplateResponse("pace-notes.html", {"request": request})
+
+# Import and include routers
+from .routes import router as pace_notes_router
+from .keycheck import router as credits_router
+
+app.include_router(pace_notes_router)
+app.include_router(credits_router)
 
 logger.info("FastAPI application initialized with rate limiting") 

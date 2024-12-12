@@ -12,7 +12,7 @@ LOG_LEVEL = "debug" if os.getenv("DEBUG_MODE", "false").lower() == "true" else "
 
 # LLM configuration check
 if not os.getenv("OPENROUTER_API_KEY"):
-    logger.error("OPENROUTER_API_KEY not set in environment")
+    logger.error("OPENROUTER_API_KEY not found in environment")
     exit(1)
 
 if not os.getenv("LLM_BASE_URL"):
@@ -25,6 +25,9 @@ if not os.getenv("PACE_MODEL"):
 if not os.getenv("JWT_SECRET"):
     logger.error("JWT_SECRET not set in environment")
     exit(1)
+
+# Import keycheck to ensure it runs on startup
+import src.backend.llm.keycheck
 
 # Rate limit configuration (these will be picked up by the rate limiter)
 os.environ.setdefault("RATE_LIMIT_PER_HOUR", "15")

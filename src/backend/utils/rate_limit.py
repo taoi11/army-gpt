@@ -33,6 +33,7 @@ class RateLimiter:
         # Load limits from environment
         self.hourly_limit = int(os.getenv("RATE_LIMIT_PER_HOUR", "15"))
         self.daily_limit = int(os.getenv("RATE_LIMIT_PER_DAY", "50"))
+        self.debug_mode = os.getenv("DEBUG_MODE", "false").lower() == "true"
         
         # Initialize limits per IP
         self.hourly_limits: Dict[str, RateLimit] = defaultdict(
@@ -44,6 +45,10 @@ class RateLimiter:
 
     def is_allowed(self, ip: str) -> bool:
         """Check if request is allowed for given IP"""
+        # Always allow in debug mode
+        if self.debug_mode:
+            return True
+
         # Check both hourly and daily limits
         hourly_allowed = self.hourly_limits[ip].is_allowed()
         if not hourly_allowed:
@@ -59,6 +64,13 @@ class RateLimiter:
 
     def get_remaining(self, ip: str) -> Dict[str, int]:
         """Get remaining requests for given IP"""
+        # In debug mode, always show max limits
+        if self.debug_mode:
+            return {
+                "hourly_remaining": self.hourly_limit,
+                "daily_remaining": self.daily_limit
+            }
+
         now = time.time()
         
         # Clean up old requests
@@ -82,7 +94,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Get client IP
         client_ip = request.client.host
         
-        # Check rate limit
+        # Check rate limit (will automatically pass if in debug mode)
         if not rate_limiter.is_allowed(client_ip):
             remaining = rate_limiter.get_remaining(client_ip)
             return Response(

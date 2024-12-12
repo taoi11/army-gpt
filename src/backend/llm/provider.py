@@ -1,7 +1,9 @@
 import os
 import requests
+import json
 from typing import Dict, Optional
 from src.backend.utils.logger import logger
+from .keycheck import CREDITS_AVAILABLE
 
 class LLMProvider:
     def __init__(self):
@@ -11,6 +13,10 @@ class LLMProvider:
         self.pace_model = os.getenv("PACE_MODEL")
         self.backup_pace_model = os.getenv("BACKUP_PACE_MODEL")
         
+        # Timeouts in seconds (connect_timeout, read_timeout)
+        self.primary_timeout = (5.0, 30.0)   # 5s connect, 30s read
+        self.backup_timeout = (5.0, 90.0)    # 5s connect, 90s read
+        
         if not self.primary_api_key:
             raise ValueError("OPENROUTER_API_KEY not found in environment variables")
 
@@ -19,27 +25,26 @@ class LLMProvider:
         prompt: str, 
         system_prompt: str,
         temperature: float = 0.1,
-        max_tokens: int = 500,
-        use_backup: bool = False
     ) -> Optional[str]:
-        """Generate completion using either primary or backup LLM"""
+        """Generate completion using either primary or backup LLM based on credits"""
         try:
-            if not use_backup:
-                return self._primary_completion(prompt, system_prompt, temperature, max_tokens)
-            return self._backup_completion(prompt, system_prompt, temperature, max_tokens)
+            # Use backup if no credits available
+            if not CREDITS_AVAILABLE:
+                logger.info("No credits available, using backup LLM")
+                return self._backup_completion(prompt, system_prompt, temperature)
+            
+            # Try primary LLM
+            return self._primary_completion(prompt, system_prompt, temperature)
         except Exception as e:
-            logger.error(f"Error in generate_completion: {str(e)}")
-            if not use_backup:
-                logger.info("Attempting backup LLM")
-                return self.generate_completion(prompt, system_prompt, temperature, max_tokens, use_backup=True)
-            return None
+            # If primary fails, try backup
+            logger.error(f"Primary LLM error: {str(e)}")
+            return self._backup_completion(prompt, system_prompt, temperature)
 
     def _primary_completion(
         self, 
         prompt: str, 
         system_prompt: str,
-        temperature: float,
-        max_tokens: int
+        temperature: float
     ) -> str:
         """Generate completion using primary LLM (OpenRouter)"""
         response = requests.post(
@@ -55,10 +60,9 @@ class LLMProvider:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ],
-                "temperature": temperature,
-                "max_tokens": max_tokens
+                "temperature": temperature
             },
-            timeout=30.0
+            timeout=self.primary_timeout
         )
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"]
@@ -67,8 +71,7 @@ class LLMProvider:
         self, 
         prompt: str, 
         system_prompt: str,
-        temperature: float,
-        max_tokens: int
+        temperature: float
     ) -> str:
         """Generate completion using backup LLM (Ollama)"""
         response = requests.post(
@@ -76,13 +79,21 @@ class LLMProvider:
             json={
                 "model": self.backup_pace_model,
                 "prompt": f"{system_prompt}\n\nUser: {prompt}\nAssistant:",
-                "temperature": temperature,
-                "max_tokens": max_tokens
+                "stream": False,
+                "options": {
+                    "temperature": temperature
+                }
             },
-            timeout=30.0
+            timeout=self.backup_timeout
         )
         response.raise_for_status()
-        return response.json()["response"]
+        
+        result = response.json()
+        if "response" in result:
+            return result["response"]
+        
+        logger.error(f"Unexpected Ollama response format: {result}")
+        raise ValueError("Unexpected response format from backup LLM")
 
 # Create singleton instance
 llm_provider = LLMProvider() 
