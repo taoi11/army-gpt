@@ -1,0 +1,23 @@
+name: army-gpt
+services:
+  army-gpt:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: army-gpt
+    ports:
+      - "8020:8020"
+    volumes:
+      - ./src/frontend/static:/app/static # for dev only
+      - ./data:/data
+    env_file:
+      - .env
+    environment:
+      - DEBUG_MODE=false
+    # restart: unless-stopped
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:8020/health"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 10s

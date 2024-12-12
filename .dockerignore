@@ -1,1 +1,18 @@
+# Environment stuff
 .env
+
+# Notes and temp data
+/data
+/src/data
+/.appLogic
+/notepad
+
+# Tests
+/test
+
+# Ignore gitignore file
+.gitignore
+
+# Docker files
+Dockerfile
+docker-compose.yml
