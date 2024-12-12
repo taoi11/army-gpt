@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from src.backend.utils.logger import logger
-from src.backend.pacenote import pace_note_agent
+from src.backend.pacenote import PaceNoteAgent
 from .keycheck import CREDITS_AVAILABLE
 from src.backend.utils.rate_limit import rate_limiter
 import uuid
@@ -33,7 +33,7 @@ async def generate_pace_note(
         request_id = str(uuid.uuid4())
         client_request.state.request_id = request_id
 
-        note = pace_note_agent.generate(
+        note = PaceNoteAgent.generate(
             content=request.content,
             temperature=request.temperature,
             request_id=request_id

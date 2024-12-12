@@ -104,10 +104,14 @@
                     method: 'GET',
                 });
                 if (response.ok) {
+                    const hourlyRemaining = response.headers.get('X-RateLimit-Remaining-Hour');
+                    const dailyRemaining = response.headers.get('X-RateLimit-Remaining-Day');
+                    
+                    // Display "∞" for unlimited (999) or the actual number
                     document.getElementById('hourlyRemaining').textContent = 
-                        response.headers.get('X-RateLimit-Remaining-Hour') || '15';
+                        hourlyRemaining === '999' ? '∞' : hourlyRemaining || '15';
                     document.getElementById('dailyRemaining').textContent = 
-                        response.headers.get('X-RateLimit-Remaining-Day') || '50';
+                        dailyRemaining === '999' ? '∞' : dailyRemaining || '50';
                 }
             } catch (error) {
                 console.error('Error updating rate limits:', error);

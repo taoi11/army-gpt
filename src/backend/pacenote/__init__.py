@@ -6,6 +6,52 @@ import uuid
 class PaceNoteAgent:
     """Agent for generating pace notes"""
     
+    # LLM settings
+    PRIMARY_OPTIONS = {
+        "temperature": 0.1  # Default temperature
+    }
+    
+    BACKUP_OPTIONS = {
+        "temperature": 0.1,  # Default temperature
+        "num_ctx": 14336,    # Context window size
+        "num_batch": 256     # Batch size for processing
+    }
+    
+    @staticmethod
+    def parse_competencies(content: str) -> str:
+        """Parse competencies from markdown table format"""
+        competencies = []
+        current_competency = None
+        current_facets = []
+        
+        for line in content.split('\n'):
+            if '|' not in line or '---' in line:  # Skip header and separator lines
+                continue
+                
+            parts = [p.strip() for p in line.split('|')]
+            if len(parts) < 3:  # Skip invalid lines
+                continue
+                
+            competency = parts[1].strip()
+            facet = parts[2].strip()
+            
+            if competency:  # New competency
+                if current_competency:  # Save previous competency
+                    facets_str = "\n    - " + "\n    - ".join(current_facets)
+                    competencies.append(f"- {current_competency}:{facets_str}")
+                current_competency = competency
+                current_facets = []
+            
+            if facet:  # Add facet to current competency
+                current_facets.append(facet)
+        
+        # Add the last competency
+        if current_competency:
+            facets_str = "\n    - " + "\n    - ".join(current_facets)
+            competencies.append(f"- {current_competency}:{facets_str}")
+            
+        return "\n".join(competencies)
+    
     @staticmethod
     def load_system_prompt() -> str:
         """Load and format system prompt"""
@@ -13,16 +59,30 @@ class PaceNoteAgent:
             # Load system prompt template
             with open("src/prompts/pace-note.md", "r") as f:
                 system_prompt = f.read()
-                
-            # TODO: Load competencies and examples from policy documents
-            # For now using placeholders until policy documents are set up
+            
+            # Load competencies from policy file
+            try:
+                with open("src/policies/pace-note/competency.md", "r") as f:
+                    competencies_content = f.read()
+                competency_list = PaceNoteAgent.parse_competencies(competencies_content)
+            except Exception as e:
+                logger.error(f"Error loading competencies: {e}")
+                competency_list = "Error loading competencies"
+            
+            # Load examples from policy file - pass through raw content
+            try:
+                with open("src/policies/pace-note/example_notes.md", "r") as f:
+                    examples = f.read()
+            except Exception as e:
+                logger.error(f"Error loading examples: {e}")
+                examples = "Error loading examples"
+            
             return system_prompt.replace(
                 "{{competency_list}}", 
-                "- Leadership\n- Initiative\n- Problem Solving"
+                competency_list
             ).replace(
                 "{{examples}}", 
-                "Example 1: The member demonstrated leadership during a training exercise.\n" +
-                "Example 2: Through effective communication, tasks were completed efficiently."
+                examples
             )
         except Exception as e:
             logger.error(f"Error loading system prompt: {e}")
@@ -44,14 +104,21 @@ class PaceNoteAgent:
             if not system_prompt:
                 track_api_call("pace_note_generate", "failed")
                 return None
+            
+            # Update temperature in options
+            primary_options = PaceNoteAgent.PRIMARY_OPTIONS.copy()
+            primary_options["temperature"] = temperature
+            
+            backup_options = PaceNoteAgent.BACKUP_OPTIONS.copy()
+            backup_options["temperature"] = temperature
                 
-            # Generate note using LLM
+            # Generate note using LLM with tool-specific options
             note = llm_provider.generate_completion(
                 prompt=content,
                 system_prompt=system_prompt,
-                temperature=temperature,
-                request_id=request_id,
-                tool="pace-note"  # Explicitly identify this as pace-note tool
+                primary_options=primary_options,
+                backup_options=backup_options,
+                request_id=request_id
             )
             
             if note:
@@ -63,8 +130,8 @@ class PaceNoteAgent:
             
         except Exception as e:
             logger.error(f"Error generating pace note: {str(e)}")
-            track_api_call("pace_note_generate", "error")
-            raise
+            track_api_call("pace_note_generate", "failed")
+            return None
 
 # Create singleton instance
 pace_note_agent = PaceNoteAgent() 

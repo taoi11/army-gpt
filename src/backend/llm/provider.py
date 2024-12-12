@@ -25,9 +25,9 @@ class LLMProvider:
         self, 
         prompt: str, 
         system_prompt: str,
-        temperature: float = 0.1,
-        request_id: str = None,
-        tool: str = "pace-note"  # Identify which tool is making the request
+        primary_options: Dict = None,
+        backup_options: Dict = None,
+        request_id: str = None
     ) -> Optional[str]:
         """Generate completion using either primary or backup LLM based on credits"""
         # Generate request ID if not provided
@@ -38,20 +38,20 @@ class LLMProvider:
             # Use backup if no credits available
             if not CREDITS_AVAILABLE:
                 logger.info("No credits available, using backup LLM")
-                return self._backup_completion(prompt, system_prompt, temperature, request_id, tool)
+                return self._backup_completion(prompt, system_prompt, backup_options or {}, request_id)
             
             # Try primary LLM
-            return self._primary_completion(prompt, system_prompt, temperature, request_id)
+            return self._primary_completion(prompt, system_prompt, primary_options or {}, request_id)
         except Exception as e:
             # If primary fails, try backup
             logger.error(f"Primary LLM error: {str(e)}")
-            return self._backup_completion(prompt, system_prompt, temperature, request_id, tool)
+            return self._backup_completion(prompt, system_prompt, backup_options or {}, request_id)
 
     def _primary_completion(
         self, 
         prompt: str, 
         system_prompt: str,
-        temperature: float,
+        options: Dict,
         request_id: str
     ) -> str:
         """Generate completion using primary LLM (OpenRouter)"""
@@ -69,7 +69,7 @@ class LLMProvider:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ],
-                "temperature": temperature
+                **options  # Add any additional options
             },
             timeout=self.primary_timeout
         )
@@ -80,23 +80,10 @@ class LLMProvider:
         self, 
         prompt: str, 
         system_prompt: str,
-        temperature: float,
-        request_id: str,
-        tool: str
+        options: Dict,
+        request_id: str
     ) -> str:
         """Generate completion using backup LLM (Ollama)"""
-        # Set Ollama options based on the tool
-        options = {
-            "temperature": temperature
-        }
-        
-        # Add specific options for pace-note tool
-        if tool == "pace-note":
-            options.update({
-                "num_ctx": 14336,      # Context window size
-                "num_batch": 256,      # Batch size for processing
-            })
-
         response = requests.post(
             f"{self.backup_base_url}/api/generate",
             headers={

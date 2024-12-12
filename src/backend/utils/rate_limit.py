@@ -7,6 +7,7 @@ import json
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from .logger import logger
+from src.backend.llm.keycheck import CREDITS_AVAILABLE
 
 @dataclass
 class RateLimit:
@@ -40,77 +41,83 @@ class RateLimit:
 
 class RateLimiter:
     def __init__(self):
-        # Load limits from environment
+        # Get limits from environment or use defaults
         self.hourly_limit = int(os.getenv("RATE_LIMIT_PER_HOUR", "15"))
         self.daily_limit = int(os.getenv("RATE_LIMIT_PER_DAY", "50"))
-        self.debug_mode = os.getenv("DEBUG_MODE", "false").lower() == "true"
         
-        # Initialize limits per IP
-        self.hourly_limits: Dict[str, RateLimit] = defaultdict(
-            lambda: RateLimit(self.hourly_limit, 3600)
-        )
-        self.daily_limits: Dict[str, RateLimit] = defaultdict(
-            lambda: RateLimit(self.daily_limit, 86400)
-        )
+        # Initialize counters
+        self.hourly_requests = defaultdict(list)  # {ip: [timestamps]}
+        self.daily_requests = defaultdict(list)   # {ip: [timestamps]}
+        self.request_ids = set()  # Track unique request IDs
         
-        # Track requests in progress to avoid double counting
-        self.requests_in_progress: Dict[str, set] = defaultdict(set)
-
+        # Current time window
+        self.hour = 3600  # seconds
+        self.day = 86400  # seconds
+        
+    def _cleanup_old_requests(self, ip: str):
+        """Remove expired timestamps"""
+        current_time = time.time()
+        
+        # Cleanup hourly
+        self.hourly_requests[ip] = [
+            ts for ts in self.hourly_requests[ip]
+            if current_time - ts < self.hour
+        ]
+        
+        # Cleanup daily
+        self.daily_requests[ip] = [
+            ts for ts in self.daily_requests[ip]
+            if current_time - ts < self.day
+        ]
+        
+        # Cleanup old request IDs (older than a day)
+        self.request_ids = {
+            rid for rid in self.request_ids
+            if current_time - float(rid.split('-')[0]) < self.day
+        }
+    
     def is_allowed(self, ip: str, request_id: str = None) -> bool:
-        """Check if request is allowed for given IP"""
-        # Always allow in debug mode
-        if self.debug_mode:
+        """Check if request is allowed based on rate limits"""
+        # Skip rate limiting for Ollama requests (when credits not available)
+        if not CREDITS_AVAILABLE:
             return True
-
-        # If this is a retry (has request_id and is in progress), allow it
-        if request_id and request_id in self.requests_in_progress[ip]:
-            return True
-
-        # Check both hourly and daily limits
-        hourly_allowed = self.hourly_limits[ip].is_allowed()
-        if not hourly_allowed:
-            logger.warning(f"IP {ip} exceeded hourly rate limit")
-            return False
-
-        daily_allowed = self.daily_limits[ip].is_allowed()
-        if not daily_allowed:
-            logger.warning(f"IP {ip} exceeded daily rate limit")
-            return False
-
-        # Track new request if it has an ID
-        if request_id:
-            self.requests_in_progress[ip].add(request_id)
-
-        return True
-
-    def record_request(self, ip: str, request_id: str = None):
-        """Record a successful request"""
-        if not self.debug_mode:
-            # Only record if it's a new request or no request_id provided
-            if not request_id or request_id not in self.requests_in_progress[ip]:
-                self.hourly_limits[ip].add_request()
-                self.daily_limits[ip].add_request()
             
-            # Clean up tracking
-            if request_id:
-                self.requests_in_progress[ip].discard(request_id)
-
-    def get_remaining(self, ip: str) -> Dict[str, int]:
-        """Get remaining requests for given IP"""
-        # In debug mode, always show max limits
-        if self.debug_mode:
+        self._cleanup_old_requests(ip)
+        
+        # If request_id provided, check if it's a duplicate
+        if request_id:
+            if request_id in self.request_ids:
+                return True  # Allow duplicate requests (retries)
+            self.request_ids.add(request_id)
+        
+        # Check limits
+        if len(self.hourly_requests[ip]) >= self.hourly_limit:
+            return False
+            
+        if len(self.daily_requests[ip]) >= self.daily_limit:
+            return False
+        
+        # Add timestamp for new request
+        current_time = time.time()
+        self.hourly_requests[ip].append(current_time)
+        self.daily_requests[ip].append(current_time)
+        
+        return True
+    
+    def get_remaining(self, ip: str) -> dict:
+        """Get remaining requests for the client"""
+        self._cleanup_old_requests(ip)
+        
+        # If using Ollama, return unlimited
+        if not CREDITS_AVAILABLE:
             return {
-                "hourly_remaining": self.hourly_limit,
-                "daily_remaining": self.daily_limit
+                "hourly_remaining": 999,
+                "daily_remaining": 999
             }
-
-        # Clean up expired requests before getting count
-        self.hourly_limits[ip].is_allowed()  # This cleans up expired requests
-        self.daily_limits[ip].is_allowed()   # This cleans up expired requests
-
+        
         return {
-            "hourly_remaining": self.hourly_limits[ip].get_remaining(),
-            "daily_remaining": self.daily_limits[ip].get_remaining()
+            "hourly_remaining": max(0, self.hourly_limit - len(self.hourly_requests[ip])),
+            "daily_remaining": max(0, self.daily_limit - len(self.daily_requests[ip]))
         }
 
 # Create singleton instance
@@ -127,7 +134,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Get request ID from header if present (for retries/backup attempts)
         request_id = request.headers.get("X-Request-ID")
         
-        if is_llm_api:
+        if is_llm_api and CREDITS_AVAILABLE:  # Only rate limit when using OpenRouter
             if not rate_limiter.is_allowed(client_ip, request_id):
                 remaining = rate_limiter.get_remaining(client_ip)
                 error_response = {
@@ -156,16 +163,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Process the request
         response = await call_next(request)
         
-        # Record only LLM API calls
+        # Add rate limit headers to response
         if is_llm_api:
-            rate_limiter.record_request(client_ip, request_id)
             remaining = rate_limiter.get_remaining(client_ip)
-        else:
-            # For non-API routes or GET requests, just get current limits
-            remaining = rate_limiter.get_remaining(client_ip)
-        
-        # Always add rate limit headers
-        response.headers["X-RateLimit-Remaining-Hour"] = str(remaining["hourly_remaining"])
-        response.headers["X-RateLimit-Remaining-Day"] = str(remaining["daily_remaining"])
+            response.headers["X-RateLimit-Remaining-Hour"] = str(remaining["hourly_remaining"])
+            response.headers["X-RateLimit-Remaining-Day"] = str(remaining["daily_remaining"])
         
         return response 
