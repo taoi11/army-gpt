@@ -1,8 +1,9 @@
-from prometheus_client import Counter, Histogram
-import time
+from fastapi import APIRouter, Request
+from fastapi.responses import Response
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
+import time
+from .logger import logger
 
 # Request metrics
 requests_total = Counter(
@@ -25,7 +26,21 @@ api_calls_total = Counter(
     ['api_name', 'status']
 )
 
+# Create router for monitoring endpoints
+router = APIRouter(tags=["monitoring"])
+
+@router.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint"""
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+@router.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy"}
+
 class MetricsMiddleware(BaseHTTPMiddleware):
+    """Middleware for collecting request metrics"""
     async def dispatch(self, request: Request, call_next):
         # Start timer
         start_time = time.time()
@@ -51,4 +66,12 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             endpoint=endpoint
         ).observe(duration)
         
-        return response 
+        return response
+
+def track_api_call(api_name: str, status: str = "success"):
+    """Helper function to track external API calls"""
+    api_calls_total.labels(
+        api_name=api_name,
+        status=status
+    ).inc()
+    logger.info(f"API call tracked: {api_name} - {status}") 

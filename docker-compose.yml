@@ -8,7 +8,6 @@ services:
     ports:
       - "8020:8020"
     volumes:
-      - ./src/frontend/static:/app/static # for dev only
       - ./data:/data
     env_file:
       - .env

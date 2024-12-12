@@ -7,6 +7,44 @@ website:
     - Keep user identifiable data out of logs and browser side only
     - Provide a simple interface for users to interact with the tools and agents
 
+directory_structure: |
+  army-gpt/
+  ├── .appLogic/
+  │   ├── overview.yml
+  │   ├── pace-note.yml
+  │   └── policy-foo.yml
+  ├── src/
+  │   ├── frontend/
+  │   │   ├── templates/   # HTML templates
+  │   │   │   ├── index.html
+  │   │   │   └── pace-notes.html
+  │   │   └── static/      # Static assets
+  │   │       ├── css/
+  │   │       ├── js/
+  │   │       └── img/
+  │   ├── backend/
+  │   │   ├── llm/         # LLM-specific code
+  │   │   │   ├── __init__.py
+  │   │   │   ├── provider.py
+  │   │   │   ├── routes.py        # API endpoints for LLM tools
+  │   │   │   └── monitoring.py
+  │   │   ├── pacenote/    # Pace notes module
+  │   │   │   └── __init__.py      # Contains PaceNoteAgent
+  │   │   └── utils/       # Shared utilities
+  │   │       ├── errors.py
+  │   │       ├── logger.py
+  │   │       ├── monitoring.py
+  │   │       ├── rate_limit.py
+  │   │       └── web.py
+  │   └── prompts/         # LLM system prompts
+  │       └── pace-note.md
+  ├── tests/               # Test files
+  ├── data/                # Temp data storage
+  ├── Dockerfile
+  ├── docker-compose.yml
+  ├── requirements.txt
+  └── README.md
+
 structure:
   frontend:
     components:
@@ -46,9 +84,9 @@ structure:
     knowledge_base:
       - /policies
     endpoints:
-      - /api/{tool_id}/<as_needed>:
+      - /llm/pace-notes/generate:
           methods: [POST]
-          description: Chat completion endpoint for specific tool
+          description: Generate pace notes using LLM
     
     rate_limiting:
       strategy: sliding_window

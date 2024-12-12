@@ -1,7 +1,6 @@
 from fastapi import Request
 from fastapi.responses import JSONResponse
-import logging
-from src.backend.utils.logger import logger
+from .logger import logger
 
 async def error_handler(request: Request, exc: Exception):
     """Global error handler"""

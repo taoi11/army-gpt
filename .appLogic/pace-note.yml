@@ -12,11 +12,19 @@ Frontend:
       - user_input: text_input
       - submit_button: send
       - response_output: text_output
-      - dropdown_menu: rank selection
-        dynamic_options:
-          - path: /policies/pace_notes/compitences-{rank}.md # the user only sees the {rank} in the dropdown menu
+      # TODO: Implement rank selection
+      # - dropdown_menu: rank selection
+      #   dynamic_options:
+      #     - path: /src/prompts/competencies/{rank}.json
+
 knowledge_base:
   sources:
+    # TODO: Implement rank-based competencies
+    # - type: files
+    #   path: /src/prompts/competencies/{rank}.json
+    #   format: json
+    #   usage:
+    #     - dynamically added into LLM system prompt
     - type: files
       path: /policies/pace_notes/compitences-{rank}.md
       format: markdown
@@ -33,19 +41,12 @@ knowledge_base:
       usage:
         - main system prompt for the tool
 endpoints:
-  chat:
-    path: /api/pace-notes/chat
+  generate:
+    path: /llm/pace-notes/generate
     methods: [POST]
-    description: Chat completion endpoint for pace notes tool
+    description: Generate pace notes using LLM
     parameters:
       temperature: 0.1
-  metrics:
-    - path: /metrics
-      methods: [GET]
-      description: Metrics endpoint prometheus compatible
-    - path: /health
-      methods: [GET]
-      description: Health check endpoint
 
   LLM_provider:
     - type: primary  
@@ -64,9 +65,6 @@ state_management:
   chat_history: ephemeral
 
 security:
-  authentication:
-    required: true
-    method: jwt
   rate_limiting:
     strategy: sliding_window
     identification:
@@ -76,6 +74,9 @@ security:
             type: jwt
             expiry: 24 hours
             purpose: session_token
+    limits:
+      - 15 requests per hour
+      - 50 requests per day
 
 monitoring and logging:
   basic_metrics: # open telemetry compatible metrics
