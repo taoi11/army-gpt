@@ -2,41 +2,52 @@
 
 Collection of AI tools and agents for army personnel.
 
-## Project Structure
+## Features
 
-```
-.
-├── src/
-│   ├── frontend/      # Frontend static files
-│   ├── backend/       # FastAPI backend
-│   ├── data/          # Data storage
-│   ├── policies/      # Policy documents
-│   └── prompts/       # LLM prompts
-├── tests/             # Test files
-├── .env.example       # Environment variables template
-├── Dockerfile         # Docker configuration
-└── requirements.txt   # Python dependencies
-```
+- **Pace Notes Generator**: AI-powered tool for creating and managing military pace notes
+- **OpenRouter Integration**: Leverages OpenRouter API for LLM capabilities
+- **Rate Limited API**: Built-in rate limiting for API protection
+- **Docker Support**: Containerized for easy deployment
 
-## Setup
+## Quick Start
 
-1. Clone the repository
-2. Copy `.env.example` to `.env` and fill in your values
-3. Build and run with Docker:
+### Prerequisites
 
+- Docker
+- Python 3.11+
+- OpenRouter API key
+
+### Environment Setup
+
+1. Clone the repository:
 ```bash
-docker build -t army-gpt .
-docker run -p 8020:8020 --env-file .env army-gpt
+git clone https://github.com/yourusername/army-gpt.git
+cd army-gpt
 ```
 
-## Development
+2. Create `.env` file:
+```bash
+OPENROUTER_API_KEY=your_api_key_here
+LLM_BASE_URL=https://openrouter.ai/api/v1
+```
 
-To run locally for development:
+### Running with Docker
 
-1. Create a virtual environment:
+Build and run the container:
+```bash
+docker compose up --build
+```
+
+The application will be available at `http://localhost:8000`
+
+### Development Setup
+
+1. Create virtual environment:
 ```bash
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate  # Linux/Mac
+# or
+.\venv\Scripts\activate  # Windows
 ```
 
 2. Install dependencies:
@@ -44,24 +55,34 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. Run the development server:
+3. Run the application:
 ```bash
-uvicorn src.backend.main:app --reload --port 8020
+uvicorn src.backend.main:app --reload
 ```
 
-## Features
+## Project Structure
 
-- Pace Notes Generator
-- Policy Foo (Coming Soon)
-- More tools coming soon...
+```
+army-gpt/
+├── src/
+│   ├── backend/
+│   │   ├── llm/          # LLM integration
+│   │   ├── pacenote/     # Pace notes logic
+│   │   └── utils/        # Utilities
+│   └── frontend/
+│       └── templates/    # HTML templates
+├── .appLogic/           # Project structure definitions
+└── docker-compose.yml   # Docker configuration
+```
 
-## Security & Privacy
+## Contributing
 
-- User messages are not logged
-- User identifiable data is not stored
-- All sensitive data is handled client-side
-- Basic metrics collection for service improvement
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
-All rights reserved.
+This project is licensed under the MIT License - see the LICENSE file for details.
