@@ -1,10 +1,10 @@
 from flask import request, jsonify
+from typing import List, Dict
 from src.backend.utils.logger import logger, truncate_llm_response
 from src.backend.policyfoo.finder import policy_finder
 from src.backend.policyfoo.reader import policy_reader
 from src.backend.policyfoo.chat import chat_agent
 from src.backend.llm.provider import Message
-from typing import List, Dict
 
 def join_responses(policy_contents: Dict[str, str]) -> str:
     """Join policy responses while preserving XML structure"""
@@ -25,8 +25,8 @@ def join_responses(policy_contents: Dict[str, str]) -> str:
 def format_conversation_history(history: List[Dict]) -> List[Message]:
     """Format conversation history into Message objects"""
     try:
-        # Take last 5 exchanges (10 messages - 5 user, 5 assistant)
-        recent_history = history[-10:] if len(history) > 10 else history
+        # Take last 2 exchanges (4 messages)
+        recent_history = history[-4:] if len(history) > 4 else history
         
         # Convert to Message objects, ensuring role and content are present
         messages = []
@@ -34,11 +34,11 @@ def format_conversation_history(history: List[Dict]) -> List[Message]:
             if msg.get('role') in ['user', 'assistant'] and msg.get('content'):
                 messages.append(Message(
                     role=msg['role'],
-                    content=msg['content']
+                    content=msg['content'].split('\n\nReferences:')[0].strip()  # Remove citations if present
                 ))
         
         # Log conversation history
-        logger.debug(f"Using conversation history ({len(messages)} messages):")
+        logger.debug(f"Formatted conversation history ({len(messages)} messages):")
         for msg in messages:
             logger.debug(f"- {msg.role}: {truncate_llm_response(msg.content)}")
             
@@ -60,7 +60,7 @@ async def generate():
         # Log received conversation history
         logger.debug(f"Received conversation history ({len(history)} messages):")
         for msg in history:
-            logger.debug(f"- {msg['role']}: {truncate_llm_response(msg['content'])}")
+            logger.debug(f"- {msg['role']}: {truncate_llm_response(msg.get('content', ''))}")
         
         # Validate query
         if not query:

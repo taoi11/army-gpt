@@ -1,8 +1,9 @@
 import os
-from typing import List, Optional
+from typing import List, Optional, Dict
 from src.backend.utils.logger import logger, truncate_llm_response
 from src.backend.llm.provider import llm_provider, Message
 import uuid
+import json
 
 class PolicyFinder:
     """Agent for identifying relevant DOAD policies based on user queries"""
@@ -64,6 +65,55 @@ class PolicyFinder:
             logger.error(f"Error loading system prompt: {str(e)}")
             return None
 
+    def _format_messages(
+        self,
+        query: str,
+        conversation_history: Optional[List[Message]] = None
+    ) -> List[Dict[str, str]]:
+        """Format conversation history into messages for the LLM API"""
+        messages = []
+        
+        # Add system prompt first
+        system_prompt = self.load_system_prompt()
+        if system_prompt:
+            messages.append({
+                "role": "system",
+                "content": system_prompt
+            })
+        
+        # Add conversation history if available
+        if conversation_history:
+            # Get last 2 exchanges (4 messages), excluding the current query
+            history = conversation_history[-4:] if len(conversation_history) > 4 else conversation_history
+            
+            # Add each message with its role
+            for msg in history:
+                # Skip if this message matches our current query
+                if msg.role == "user" and msg.content.strip() == query.strip():
+                    continue
+                messages.append({
+                    "role": msg.role,
+                    "content": msg.content
+                })
+        
+        # Add the current query as the final user message
+        messages.append({
+            "role": "user",
+            "content": query
+        })
+        
+        # Log the formatted messages
+        truncated_messages = [
+            {
+                "role": msg["role"],
+                "content": truncate_llm_response(msg["content"])
+            }
+            for msg in messages
+        ]
+        logger.debug(f"Formatted messages: {json.dumps(truncated_messages, indent=2)}")
+        
+        return messages
+
     async def find_relevant_policies(
         self,
         query: str,
@@ -76,21 +126,17 @@ class PolicyFinder:
             if not request_id:
                 request_id = str(uuid.uuid4())
             
-            # Load system prompt
-            system_prompt = self.load_system_prompt()
-            if not system_prompt:
-                logger.error("Failed to load system prompt")
-                return []
+            # Format messages with conversation history
+            messages = self._format_messages(query, conversation_history)
             
-            # Log before LLM request
-            logger.debug(f"Making LLM request with query: {truncate_llm_response(query)}")
-            logger.debug(f"Request ID: {request_id}")
+            # Get the user's message from formatted messages
+            user_message = next((msg["content"] for msg in messages if msg["role"] == "user"), query)
             
             # Generate policy list using LLM
             response = llm_provider.generate_completion(
-                prompt=query,
-                system_prompt=system_prompt,
-                conversation_history=conversation_history,
+                prompt=user_message,  # Use the formatted user message
+                system_prompt=messages[0]["content"] if messages else "",  # Use the system prompt from messages
+                messages=messages,  # Pass formatted messages directly
                 primary_options=self.PRIMARY_OPTIONS,
                 backup_options=self.BACKUP_OPTIONS,
                 request_id=request_id
@@ -113,6 +159,11 @@ class PolicyFinder:
                 for policy in response.split(",")
                 if policy.strip()
             ]
+            
+            # If no policies found but we have context, try again without context
+            if not policies and conversation_history:
+                logger.debug("No policies found with context, trying without context")
+                return await self.find_relevant_policies(query=query, request_id=request_id)
             
             logger.info(f"Found {len(policies)} relevant policies: {policies}")
             return policies

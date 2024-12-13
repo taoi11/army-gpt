@@ -1,13 +1,12 @@
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Callable
 import os
 import json
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from .logger import logger
-from src.backend.llm.keycheck import CREDITS_AVAILABLE
 
 @dataclass
 class RateLimit:
@@ -54,6 +53,13 @@ class RateLimiter:
         self.hour = 3600  # seconds
         self.day = 86400  # seconds
         
+        # Credits check callback
+        self._credits_check: Callable[[], bool] = lambda: True
+        
+    def set_credits_check(self, callback: Callable[[], bool]):
+        """Set the callback for checking credits availability"""
+        self._credits_check = callback
+        
     def _cleanup_old_requests(self, ip: str):
         """Remove expired timestamps"""
         current_time = time.time()
@@ -80,7 +86,7 @@ class RateLimiter:
     def is_allowed(self, ip: str, request_id: str = None) -> bool:
         """Check if request is allowed based on rate limits"""
         # Skip rate limiting for Ollama requests (when credits not available)
-        if not CREDITS_AVAILABLE:
+        if not self._credits_check():
             return True
             
         self._cleanup_old_requests(ip)
@@ -112,7 +118,7 @@ class RateLimiter:
         self._cleanup_old_requests(ip)
         
         # If using Ollama, return unlimited
-        if not CREDITS_AVAILABLE:
+        if not self._credits_check():
             return {
                 "hourly_remaining": 999,
                 "daily_remaining": 999
@@ -137,7 +143,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Get request ID from header if present (for retries/backup attempts)
         request_id = request.headers.get("X-Request-ID")
         
-        if is_llm_api and CREDITS_AVAILABLE:  # Only rate limit when using OpenRouter
+        if is_llm_api and rate_limiter._credits_check():  # Only rate limit when using OpenRouter
             if not rate_limiter.is_allowed(client_ip, request_id):
                 remaining = rate_limiter.get_remaining(client_ip)
                 error_response = {

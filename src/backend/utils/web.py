@@ -1,10 +1,31 @@
-from fastapi import APIRouter, Request
+from fastapi import FastAPI, APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from .logger import logger
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="Army-GPT",
+    description="Collection of AI tools and agents for army dudes",
+    version="1.0.0"
+)
 
 # Setup templates
 templates = Jinja2Templates(directory="src/frontend/templates")
+
+# Setup static files
+app.mount("/static", StaticFiles(directory="src/frontend/static"), name="static")
+
+# Setup CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with specific origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Create router for web pages
 router = APIRouter(tags=["web"])

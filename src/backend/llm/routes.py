@@ -1,13 +1,15 @@
 from fastapi import APIRouter, Request, HTTPException, Response
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict
 from src.backend.utils.logger import logger
 from src.backend.pacenote import PaceNoteAgent
-from .keycheck import CREDITS_AVAILABLE
+from .keycheck import credits_checker
 from src.backend.utils.rate_limit import rate_limiter
+from src.backend.llm.provider import Message  # Use our own Message class
 import uuid
 import json
+import os
 
 router = APIRouter(prefix="/llm")
 
@@ -22,13 +24,14 @@ class PaceNoteResponse(BaseModel):
 
 class PolicyFooRequest(BaseModel):
     content: str
+    conversation_history: Optional[List[Dict[str, str]]] = []  # Add conversation history field
     temperature: Optional[float] = 0.1
     stream: Optional[bool] = False  # Default to non-streaming for policy-foo
 
 @router.get("/credits")
-async def get_credits_status():
-    """Return current credit status"""
-    return {"credits_available": CREDITS_AVAILABLE}
+async def check_credits():
+    """Check if we have credits available"""
+    return {"credits_available": credits_checker.has_credits}
 
 @router.post("/pace-notes/generate")
 async def generate_pace_note(
@@ -118,69 +121,72 @@ async def generate_policy_response(
         response = None
         remaining = {"hourly_remaining": 0, "daily_remaining": 0}
         
-        try:
-            # Import policy agents here to avoid circular imports
-            from src.backend.policyfoo.finder import policy_finder
-            from src.backend.policyfoo.reader import policy_reader
-            from src.backend.policyfoo.chat import chat_agent
-            
-            # Step 1: Find relevant policies
-            policy_refs = await policy_finder.find_relevant_policies(
-                query=request.content,
-                request_id=request_id
+        # Import policy agents here to avoid circular imports
+        from src.backend.policyfoo.finder import policy_finder
+        from src.backend.policyfoo.reader import policy_reader
+        from src.backend.policyfoo.chat import chat_agent
+        
+        # Format conversation history using our Message class
+        conversation_history = [
+            Message(role=msg["role"], content=msg["content"])
+            for msg in request.conversation_history
+        ] if request.conversation_history else []
+        
+        # Step 1: Find relevant policies
+        policy_refs = await policy_finder.find_relevant_policies(
+            query=request.content,
+            conversation_history=conversation_history,
+            request_id=request_id
+        )
+        
+        if not policy_refs:
+            logger.warning("No relevant policies found")
+            return JSONResponse(
+                content={
+                    "content": "<response><answer>I couldn't find any relevant policies for your query. Could you please rephrase or provide more details?</answer><citations></citations><follow_up>Try asking about a specific policy area?</follow_up></response>",
+                    "remaining_requests": remaining
+                },
+                headers={
+                    "X-RateLimit-Remaining-Hour": str(remaining["hourly_remaining"]),
+                    "X-RateLimit-Remaining-Day": str(remaining["daily_remaining"])
+                }
             )
-            
-            if not policy_refs:
-                logger.warning("No relevant policies found")
-                return JSONResponse(
-                    content={
-                        "content": "<response><answer>I couldn't find any relevant policies for your query. Could you please rephrase or provide more details?</answer><citations></citations><follow_up>Try asking about a specific policy area?</follow_up></response>",
-                        "remaining_requests": remaining
-                    },
-                    headers={
-                        "X-RateLimit-Remaining-Hour": str(remaining["hourly_remaining"]),
-                        "X-RateLimit-Remaining-Day": str(remaining["daily_remaining"])
-                    }
-                )
-            
-            # Step 2: Get policy content with parallel processing
-            policy_contents = await policy_reader.get_policy_content(
-                policy_numbers=policy_refs,
-                query=request.content,
-                request_id=request_id,
-                temperature=request.temperature,
-                parallel=True  # Use parallel processing as specified in YAML
+        
+        # Step 2: Get policy content with parallel processing
+        policy_contents = await policy_reader.get_policy_content(
+            policy_numbers=policy_refs,
+            query=request.content,
+            conversation_history=conversation_history,
+            request_id=request_id,
+            temperature=request.temperature,
+            parallel=True
+        )
+        
+        if not policy_contents:
+            logger.warning("Failed to extract policy content")
+            return JSONResponse(
+                content={
+                    "content": "<response><answer>I found some relevant policies but couldn't extract their content. Please try again.</answer><citations></citations><follow_up>Maybe try rephrasing your question?</follow_up></response>",
+                    "remaining_requests": remaining
+                },
+                headers={
+                    "X-RateLimit-Remaining-Hour": str(remaining["hourly_remaining"]),
+                    "X-RateLimit-Remaining-Day": str(remaining["daily_remaining"])
+                }
             )
-            
-            if not policy_contents:
-                logger.warning("Failed to extract policy content")
-                return JSONResponse(
-                    content={
-                        "content": "<response><answer>I found some relevant policies but couldn't extract their content. Please try again.</answer><citations></citations><follow_up>Maybe try rephrasing your question?</follow_up></response>",
-                        "remaining_requests": remaining
-                    },
-                    headers={
-                        "X-RateLimit-Remaining-Hour": str(remaining["hourly_remaining"]),
-                        "X-RateLimit-Remaining-Day": str(remaining["daily_remaining"])
-                    }
-                )
-            
-            # Step 3: Generate chat response using first policy content
-            # TODO: In future, combine multiple policy contents
-            first_policy = next(iter(policy_contents.values()))
-            response = await chat_agent.generate_response(
-                query=request.content,
-                policy_content=first_policy,
-                request_id=request_id,
-                temperature=request.temperature
-            )
-            
-        except Exception as e:
-            logger.error(f"Error generating policy response: {str(e)}")
-            response = f"Error: {str(e)}"
+        
+        # Step 3: Generate chat response using first policy content
+        first_policy = next(iter(policy_contents.values()))
+        response = await chat_agent.generate_response(
+            query=request.content,
+            policy_content=first_policy,
+            conversation_history=conversation_history,
+            request_id=request_id,
+            temperature=request.temperature
+        )
         
         # Only check rate limits if we got a successful response and using OpenRouter
-        if CREDITS_AVAILABLE and response and not response.startswith("Error:"):
+        if credits_checker.has_credits and response and not isinstance(response, str):
             # is_allowed() will add the request if allowed
             if not rate_limiter.is_allowed(client_ip, request_id):
                 raise HTTPException(
@@ -191,7 +197,7 @@ async def generate_policy_response(
         
         return JSONResponse(
             content={
-                "content": response,
+                "content": response if response else "<response><answer>Sorry, I encountered an error processing your request. Please try again.</answer><citations></citations><follow_up></follow_up></response>",
                 "remaining_requests": remaining
             },
             headers={
@@ -199,21 +205,13 @@ async def generate_policy_response(
                 "X-RateLimit-Remaining-Day": str(remaining["daily_remaining"])
             }
         )
-
+        
     except Exception as e:
-        logger.error(f"Error in policy-foo generation endpoint: {str(e)}")
-        # Get rate limits even in error case
-        try:
-            remaining = rate_limiter.get_remaining(client_request.client.host)
-            headers = {
-                "X-RateLimit-Remaining-Hour": str(remaining["hourly_remaining"]),
-                "X-RateLimit-Remaining-Day": str(remaining["daily_remaining"])
-            }
-        except:
-            headers = {}
-            
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error",
-            headers=headers
+        logger.error(f"Error in generate endpoint: {str(e)}")
+        return JSONResponse(
+            content={
+                "content": f"<response><answer>An error occurred: {str(e)}</answer><citations></citations><follow_up></follow_up></response>",
+                "remaining_requests": {"hourly_remaining": 0, "daily_remaining": 0}
+            },
+            status_code=500
         )

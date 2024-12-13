@@ -4,6 +4,7 @@ from typing import List, Dict, Optional
 from src.backend.utils.logger import logger, truncate_llm_response
 from src.backend.llm.provider import llm_provider, Message
 import uuid
+import json
 
 class PolicyReader:
     """Agent for extracting relevant content from policies"""
@@ -65,27 +66,70 @@ class PolicyReader:
             logger.debug(f"Full error details:", exc_info=True)
             return None
             
+    def _format_messages(
+        self,
+        query: str,
+        policy_content: str,
+        conversation_history: Optional[List[Message]] = None
+    ) -> List[Dict[str, str]]:
+        """Format conversation history into messages for the LLM API"""
+        formatted_messages = []
+        seen_messages = set()  # Initialize seen_messages set
+        
+        # Load and prepare system prompt first
+        system_prompt = self.load_system_prompt()
+        if system_prompt:
+            # Replace policy content placeholder
+            system_prompt = system_prompt.replace("{{POLICY_CONTENT}}", policy_content)
+            formatted_messages.append({
+                "role": "system",
+                "content": system_prompt
+            })
+        
+        # Add conversation history in chronological order
+        if conversation_history:
+            # Convert Message objects to dicts and filter out duplicates
+            for msg in conversation_history:
+                # Create a unique key for the message
+                msg_key = f"{msg.role}:{msg.content.strip()}"
+                if msg_key not in seen_messages:
+                    seen_messages.add(msg_key)
+                    formatted_messages.append(msg.to_dict())
+        
+        # Add current user prompt if not already in history
+        current_prompt_key = f"user:{query.strip()}"
+        if current_prompt_key not in seen_messages:
+            formatted_messages.append({"role": "user", "content": query})
+        
+        # Log the formatted messages
+        truncated_messages = [
+            {
+                "role": msg["role"],
+                "content": truncate_llm_response(msg["content"])
+            }
+            for msg in formatted_messages
+        ]
+        logger.debug(f"Formatted messages: {json.dumps(truncated_messages, indent=2)}")
+        
+        return formatted_messages
+
     async def extract_policy_content(
         self,
         policy_number: str,
         query: str,
         request_id: str,
+        conversation_history: Optional[List[Message]] = None,
         temperature: Optional[float] = None
     ) -> Optional[str]:
         """Extract relevant content from a single policy"""
         try:
-            # Load system prompt
-            system_prompt = self.load_system_prompt()
-            if not system_prompt:
-                return None
-                
             # Load policy content
             policy_content = self.load_policy_content(policy_number)
             if not policy_content:
                 return None
                 
-            # Replace placeholder in system prompt with policy content
-            system_prompt = system_prompt.replace("{{POLICY_CONTENT}}", policy_content)
+            # Format messages with conversation history
+            messages = self._format_messages(query, policy_content, conversation_history)
             
             # Override temperature if provided
             if temperature is not None:
@@ -98,8 +142,9 @@ class PolicyReader:
                 
             # Generate response
             response = llm_provider.generate_completion(
-                prompt=query,
-                system_prompt=system_prompt,
+                prompt=query,  # Pass original query
+                system_prompt=messages[0]["content"] if messages else "",  # Use the system prompt from messages
+                messages=messages,  # Pass formatted messages directly
                 primary_options=self.PRIMARY_OPTIONS,
                 backup_options=self.BACKUP_OPTIONS,
                 request_id=request_id
@@ -117,6 +162,7 @@ class PolicyReader:
         policy_numbers: List[str],
         query: str,
         request_id: Optional[str] = None,
+        conversation_history: Optional[List[Message]] = None,
         temperature: Optional[float] = None,
         parallel: bool = True
     ) -> Dict[str, str]:
@@ -133,6 +179,7 @@ class PolicyReader:
                     policy_number=policy_number,
                     query=query,
                     request_id=f"{request_id}-{policy_number}",
+                    conversation_history=conversation_history,  # Pass conversation history
                     temperature=temperature
                 )
                 

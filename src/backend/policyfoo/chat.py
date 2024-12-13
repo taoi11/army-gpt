@@ -1,9 +1,10 @@
 import os
 import re
 from typing import Optional, Dict, Union, Generator, List
-from src.backend.utils.logger import logger
+from src.backend.utils.logger import logger, truncate_llm_response
 from src.backend.llm.provider import llm_provider, Message
 import uuid
+import json
 
 class ChatAgent:
     """Agent for generating chat responses based on policy content"""
@@ -69,52 +70,91 @@ class ChatAgent:
     <follow_up></follow_up>
 </response>"""
             
+    def _format_messages(
+        self,
+        query: str,
+        policy_content: str,
+        conversation_history: Optional[List[Message]] = None
+    ) -> List[Dict[str, str]]:
+        """Format conversation history into messages for the LLM API"""
+        formatted_messages = []
+        seen_messages = set()  # Initialize seen_messages set
+        
+        # Load and prepare system prompt first
+        system_prompt = self.load_system_prompt()
+        if system_prompt:
+            # Replace policy content placeholder
+            system_prompt = system_prompt.replace("{{POLICY_CONTENT}}", policy_content)
+            formatted_messages.append({
+                "role": "system",
+                "content": system_prompt
+            })
+        
+        # Add conversation history in chronological order
+        if conversation_history:
+            # Convert Message objects to dicts and filter out duplicates
+            for msg in conversation_history:
+                # Create a unique key for the message
+                msg_key = f"{msg.role}:{msg.content.strip()}"
+                if msg_key not in seen_messages:
+                    seen_messages.add(msg_key)
+                    formatted_messages.append(msg.to_dict())
+        
+        # Add current user prompt if not already in history
+        current_prompt_key = f"user:{query.strip()}"
+        if current_prompt_key not in seen_messages:
+            formatted_messages.append({"role": "user", "content": query})
+        
+        # Log the formatted messages
+        truncated_messages = [
+            {
+                "role": msg["role"],
+                "content": truncate_llm_response(msg["content"])
+            }
+            for msg in formatted_messages
+        ]
+        logger.debug(f"Formatted messages: {json.dumps(truncated_messages, indent=2)}")
+        
+        return formatted_messages
+
     async def generate_response(
         self,
         query: str,
         policy_content: str,
-        request_id: Optional[str] = None,
+        request_id: str,
+        conversation_history: Optional[List[Message]] = None,
         temperature: Optional[float] = None
-    ) -> Union[str, Generator[str, None, None]]:
-        """Generate a response based on policy content"""
+    ) -> Optional[str]:
+        """Generate a response to the user's query"""
         try:
-            # Generate request ID if not provided
-            if not request_id:
-                request_id = str(uuid.uuid4())
-                
-            # Load system prompt
-            system_prompt = self.load_system_prompt()
-            if not system_prompt:
-                return "Error: Failed to load system prompt"
-                
+            # Format messages with conversation history
+            messages = self._format_messages(query, policy_content, conversation_history)
+            
             # Override temperature if provided
             if temperature is not None:
                 self.PRIMARY_OPTIONS["temperature"] = temperature
                 self.BACKUP_OPTIONS["temperature"] = temperature
             
-            # Replace placeholder in system prompt with raw policy content
-            system_prompt = system_prompt.replace("{{POLICY_DATA}}", policy_content)
-            
+            logger.debug(f"Making LLM request for chat response")
+            logger.debug(f"Query: {truncate_llm_response(query)}")
+            logger.debug(f"Request ID: {request_id}")
+                
             # Generate response
             response = llm_provider.generate_completion(
-                prompt=query,
-                system_prompt=system_prompt,
+                prompt=query,  # Pass original query
+                system_prompt=messages[0]["content"] if messages else "",  # Use the system prompt from messages
+                messages=messages,  # Pass formatted messages directly
                 primary_options=self.PRIMARY_OPTIONS,
                 backup_options=self.BACKUP_OPTIONS,
                 request_id=request_id
             )
             
-            # Format response for frontend
-            formatted_response = self._format_response(response)
-            return formatted_response
+            logger.debug(f"LLM chat response: {truncate_llm_response(response)}")
+            return response
             
         except Exception as e:
             logger.error(f"Error generating chat response: {str(e)}")
-            return f"""<response>
-    <answer>Error generating response: {str(e)}</answer>
-    <citations></citations>
-    <follow_up></follow_up>
-</response>"""
+            return None
 
 # Create singleton instance
 chat_agent = ChatAgent() 

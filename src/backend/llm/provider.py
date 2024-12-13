@@ -3,8 +3,8 @@ import requests
 import json
 import uuid
 from typing import Dict, Optional, Union, Generator, List
-from src.backend.utils.logger import logger
-from .keycheck import CREDITS_AVAILABLE
+from src.backend.utils.logger import logger, truncate_llm_response
+from .keycheck import credits_checker
 
 class Message:
     """Represents a message in the conversation"""
@@ -33,94 +33,131 @@ class LLMProvider:
             raise ValueError("OPENROUTER_API_KEY not found in environment variables")
 
     def generate_completion(
-        self, 
-        prompt: str, 
-        system_prompt: str,
+        self,
+        prompt: str,
+        system_prompt: str = "",
+        messages: Optional[List[Dict[str, str]]] = None,
         conversation_history: Optional[List[Message]] = None,
-        primary_options: Dict = None,
-        backup_options: Dict = None,
-        request_id: str = None,
+        primary_options: Optional[Dict] = None,
+        backup_options: Optional[Dict] = None,
+        request_id: Optional[str] = None,
         stream: bool = False
-    ) -> Optional[str]:
-        """Generate completion using either primary or backup LLM based on credits"""
-        # Generate request ID if not provided
-        if not request_id:
-            request_id = str(uuid.uuid4())
-
+    ) -> Union[str, Generator[str, None, None]]:
+        """Generate completion using primary or backup LLM"""
         try:
-            # Use backup if no credits available
-            if not CREDITS_AVAILABLE:
-                logger.info("No credits available, using backup LLM")
-                return self._backup_completion(
-                    prompt, 
-                    system_prompt, 
-                    conversation_history,
-                    backup_options or {}, 
-                    request_id, 
-                    stream
-                )
-            
-            # Try primary LLM
-            return self._primary_completion(
-                prompt, 
-                system_prompt, 
-                conversation_history,
-                primary_options or {}, 
-                request_id
+            # Format messages
+            formatted_messages = self._prepare_messages(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                messages=messages,
+                conversation_history=conversation_history
             )
-        except Exception as e:
-            # If primary fails, try backup
-            logger.error(f"Primary LLM error: {str(e)}")
+            
+            # Try primary LLM first
             try:
-                return self._backup_completion(
-                    prompt, 
-                    system_prompt, 
-                    conversation_history,
-                    backup_options or {}, 
-                    request_id, 
-                    stream
+                return self._primary_completion(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    messages=formatted_messages,
+                    options=primary_options,
+                    request_id=request_id
                 )
-            except Exception as backup_error:
-                logger.error(f"Backup LLM error: {str(backup_error)}")
-                raise  # Re-raise the backup error
+            except Exception as e:
+                logger.error(f"Primary LLM failed: {str(e)}")
+                logger.debug("Falling back to backup LLM")
+                
+                # Fall back to backup LLM
+                return self._backup_completion(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    messages=formatted_messages,
+                    options=backup_options,
+                    request_id=request_id,
+                    stream=stream
+                )
+                
+        except Exception as e:
+            logger.error(f"LLM completion failed: {str(e)}")
+            logger.debug("Full error details:", exc_info=True)
+            raise
 
     def _prepare_messages(
         self, 
         prompt: str, 
         system_prompt: str,
+        messages: Optional[List[Dict[str, str]]] = None,
         conversation_history: Optional[List[Message]] = None
     ) -> List[Dict[str, str]]:
         """Prepare messages list for API request"""
-        messages = [{"role": "system", "content": system_prompt}]
+        formatted_messages = []
+        seen_messages = set()  # Initialize seen_messages set
         
-        # Add conversation history if provided
-        if conversation_history:
-            messages.extend([msg.to_dict() for msg in conversation_history])
+        # Add system prompt first if provided
+        if system_prompt:
+            formatted_messages.append({"role": "system", "content": system_prompt})
+            
+        # Use provided messages if available, otherwise use conversation history
+        if messages:
+            # Skip system message if we already added one
+            for msg in messages:
+                if msg["role"] == "system" and formatted_messages and formatted_messages[0]["role"] == "system":
+                    continue
+                msg_key = f"{msg['role']}:{msg['content'].strip()}"
+                if msg_key not in seen_messages:
+                    seen_messages.add(msg_key)
+                    formatted_messages.append(msg)
+        elif conversation_history:
+            # Add conversation history in chronological order
+            for msg in conversation_history:
+                msg_key = f"{msg.role}:{msg.content.strip()}"
+                if msg_key not in seen_messages:
+                    seen_messages.add(msg_key)
+                    formatted_messages.append(msg.to_dict())
         
-        # Add current user prompt
-        messages.append({"role": "user", "content": prompt})
+        # Add current user prompt if not already in history
+        current_prompt_key = f"user:{prompt.strip()}"
+        if current_prompt_key not in seen_messages:
+            formatted_messages.append({"role": "user", "content": prompt})
         
-        # Log full conversation history
-        logger.debug(f"Prepared messages ({len(messages)} total):")
-        for msg in messages:
-            logger.debug(f"- {msg['role']}: {truncate_llm_response(msg['content'])}")
+        # Log full conversation history in JSON format
+        truncated_messages = [
+            {
+                "role": msg["role"],
+                "content": truncate_llm_response(msg["content"])
+            }
+            for msg in formatted_messages
+        ]
+        logger.debug(f"Messages: {json.dumps(truncated_messages, indent=2)}")
         
-        return messages
+        return formatted_messages
 
     def _primary_completion(
         self, 
         prompt: str, 
         system_prompt: str,
-        conversation_history: Optional[List[Message]],
-        options: Dict,
-        request_id: str
+        messages: Optional[List[Dict[str, str]]] = None,
+        conversation_history: Optional[List[Message]] = None,
+        options: Dict = None,
+        request_id: str = None
     ) -> str:
         """Generate completion using primary LLM (OpenRouter)"""
         model = options.get("model")
         if not model:
             raise ValueError("Model not specified in options")
             
-        messages = self._prepare_messages(prompt, system_prompt, conversation_history)
+        # Use provided messages or format from conversation history
+        if not messages:
+            messages = self._prepare_messages(prompt, system_prompt, conversation_history)
+        
+        # Log the messages being sent
+        truncated_messages = [
+            {
+                "role": msg["role"],
+                "content": truncate_llm_response(msg["content"])
+            }
+            for msg in messages
+        ]
+        logger.debug(f"Messages: {json.dumps(truncated_messages, indent=2)}")
         
         try:
             response = requests.post(
@@ -163,9 +200,10 @@ class LLMProvider:
         self, 
         prompt: str, 
         system_prompt: str,
-        conversation_history: Optional[List[Message]],
-        options: Dict,
-        request_id: str,
+        messages: Optional[List[Dict[str, str]]] = None,
+        conversation_history: Optional[List[Message]] = None,
+        options: Dict = None,
+        request_id: str = None,
         stream: bool = False
     ) -> Union[str, Generator[str, None, None]]:
         """Generate completion using backup LLM (Ollama)"""
@@ -173,7 +211,9 @@ class LLMProvider:
         if not model:
             raise ValueError("Model not specified in options")
             
-        messages = self._prepare_messages(prompt, system_prompt, conversation_history)
+        # Use provided messages or format from conversation history
+        if not messages:
+            messages = self._prepare_messages(prompt, system_prompt, conversation_history)
         
         # Log request details
         logger.debug(f"Making backup LLM request to {self.backup_base_url}")
@@ -185,7 +225,7 @@ class LLMProvider:
         truncated_messages = [
             {
                 "role": msg["role"],
-                "content": msg["content"][:100] + "..." if len(msg["content"]) > 100 else msg["content"]
+                "content": truncate_llm_response(msg["content"])
             }
             for msg in messages
         ]
