@@ -29,7 +29,7 @@ async function handleSubmit(e) {
             body: JSON.stringify({
                 content: userInput,
                 temperature: 0.1,
-                stream: false
+                conversation_history: conversationHistory
             })
         });
 
@@ -37,51 +37,33 @@ async function handleSubmit(e) {
             throw new Error('Failed to get response');
         }
 
-        // Check if response is streaming
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('text/event-stream')) {
-            // Handle streaming response
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let content = '';
-
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
-
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n');
-
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const data = line.slice(6);
-                        if (data === '[DONE]') {
-                            // End of stream
-                            break;
-                        }
-                        content += data;
-                        updateMessage(thinkingMessage, content);
-                    }
-                }
-            }
-
-            // Add assistant message to history
-            conversationHistory.push({ role: 'assistant', content });
-
-        } else {
-            // Handle regular JSON response
-            const data = await response.json();
-            
-            if (data.error) {
-                throw new Error(data.error);
-            }
-
-            // Update UI with response
-            updateMessage(thinkingMessage, data.content);
-
-            // Add assistant message to history
-            conversationHistory.push({ role: 'assistant', content: data.content });
+        // Handle JSON response
+        const data = await response.json();
+        
+        if (data.error) {
+            throw new Error(data.error);
         }
+
+        // Add assistant message to history
+        if (data.content) {
+            // Parse XML to get the main answer
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(data.content, 'text/xml');
+            const answer = xmlDoc.querySelector('answer')?.textContent?.trim() || data.content;
+            const citations = xmlDoc.querySelector('citations')?.textContent?.trim() || '';
+            
+            // Store both the answer and citations in history
+            conversationHistory.push({ 
+                role: 'assistant', 
+                content: `${answer}${citations ? `\nReferences: ${citations}` : ''}`.trim()
+            });
+        }
+
+        // Update UI with response
+        updateMessage(thinkingMessage, data.content);
+
+        // Log conversation history for debugging
+        console.log('Current conversation history:', conversationHistory);
 
         // Prune conversation history if needed
         while (conversationHistory.length > MAX_MESSAGES) {
@@ -133,29 +115,36 @@ function updateMessage(messageDiv, content) {
     const citations = xmlDoc.querySelector('citations')?.textContent?.trim() || '';
     const followUp = xmlDoc.querySelector('follow_up')?.textContent?.trim() || '';
 
-    // Build HTML
-    let html = `<p class="whitespace-pre-line">${answer}</p>`;
+    // Build HTML with better separation
+    let html = `
+        <div class="message-content">
+            <div class="message-answer whitespace-pre-line mb-4">
+                ${answer}
+            </div>`;
     
     // Add citations if present
     if (citations) {
         html += `
-            <div class="policy-reference mt-2">
-                <strong>References:</strong>
-                ${citations}
-            </div>
-        `;
+            <div class="policy-reference mb-3 border-t border-gray-200 pt-3">
+                <div class="font-semibold text-gray-700 mb-1">References:</div>
+                <div class="text-gray-600">
+                    ${citations}
+                </div>
+            </div>`;
     }
 
     // Add follow-up if present
     if (followUp) {
         html += `
-            <div class="suggested-followups mt-2">
+            <div class="suggested-followups border-t border-gray-200 pt-3">
+                <div class="font-semibold text-gray-700 mb-2">Follow-up Questions:</div>
                 <span class="followup-chip" onclick="useFollowup(this.textContent)">
                     ${followUp}
                 </span>
-            </div>
-        `;
+            </div>`;
     }
+
+    html += `</div>`;
 
     messageDiv.innerHTML = html;
     messageDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });

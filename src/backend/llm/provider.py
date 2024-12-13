@@ -100,6 +100,11 @@ class LLMProvider:
         # Add current user prompt
         messages.append({"role": "user", "content": prompt})
         
+        # Log full conversation history
+        logger.debug(f"Prepared messages ({len(messages)} total):")
+        for msg in messages:
+            logger.debug(f"- {msg['role']}: {truncate_llm_response(msg['content'])}")
+        
         return messages
 
     def _primary_completion(
@@ -175,7 +180,16 @@ class LLMProvider:
         logger.debug(f"Model: {model}")
         logger.debug(f"Request ID: {request_id}")
         logger.debug(f"Options: {options}")
-        logger.debug(f"Messages: {json.dumps(messages, indent=2)}")
+        
+        # Log messages with truncated content
+        truncated_messages = [
+            {
+                "role": msg["role"],
+                "content": msg["content"][:100] + "..." if len(msg["content"]) > 100 else msg["content"]
+            }
+            for msg in messages
+        ]
+        logger.debug(f"Messages: {json.dumps(truncated_messages, indent=2)}")
         
         try:
             # Format request according to Ollama API
@@ -190,7 +204,12 @@ class LLMProvider:
                 }
             }
             
-            logger.debug(f"Formatted Ollama request: {json.dumps(request_data, indent=2)}")
+            # Log formatted request with truncated messages
+            truncated_request = {
+                **request_data,
+                "messages": truncated_messages
+            }
+            logger.debug(f"Formatted Ollama request: {json.dumps(truncated_request, indent=2)}")
             
             response = requests.post(
                 f"{self.backup_base_url}/api/chat",

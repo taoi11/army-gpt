@@ -50,7 +50,8 @@ Other Rules:
 - Don't make assumptions beyond provided content
 - Strictly follow the XML format shown in the example
 - Do not use markdown code blocks in your response
-- The follow-up question should be from the user's point of view
+- The follow-up question is your attempt to predict what the user will ask next
+- The user should be able to copy and paste your follow-up to continue the conversation
 
 Policy Information:
 {{POLICY_DATA}}
