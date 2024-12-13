@@ -17,4 +17,9 @@ async def root(request: Request):
 @router.get("/pace-notes", response_class=HTMLResponse)
 async def pace_notes_page(request: Request):
     """Serve the pace notes page"""
-    return templates.TemplateResponse("pace-notes.html", {"request": request}) 
+    return templates.TemplateResponse("pace-notes.html", {"request": request})
+
+@router.get("/policy-foo", response_class=HTMLResponse)
+async def policy_foo_page(request: Request):
+    """Serve the policy foo page"""
+    return templates.TemplateResponse("policy-foo.html", {"request": request}) 

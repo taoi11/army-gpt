@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Army-GPT - AI Tools for Army Personnel</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="/static/css/common.css" rel="stylesheet">
 </head>
 <body class="bg-gray-100">
     <!-- Header with Navigation -->
@@ -18,9 +19,9 @@
                     </div>
                 </div>
                 <div class="space-x-4">
-                    <a href="/pace-notes" class="hover:text-gray-300">Pace Notes</a>
-                    <a href="#" class="hover:text-gray-300">Policy Foo</a>
-                    <a href="#" class="hover:text-gray-300">Coming Soon</a>
+                    <a href="/pace-notes" class="hover:text-gray-300 transition-colors">Pace Notes</a>
+                    <a href="/policy-foo" class="hover:text-gray-300 transition-colors">Policy Assistant</a>
+                    <a href="#" class="hover:text-gray-300 transition-colors">Coming Soon</a>
                 </div>
             </div>
         </nav>
@@ -37,22 +38,23 @@
         <!-- Tools Grid -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
             <!-- Pace Notes Card -->
-            <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="bg-white rounded-lg shadow-md p-6 transition-all hover:shadow-lg">
                 <h2 class="text-xl font-bold mb-2">Pace Notes</h2>
                 <p class="text-gray-600 mb-4">Generate pace notes for CAF Members</p>
                 <a href="/pace-notes" 
-                   class="inline-block bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                   class="inline-block bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors">
                     Start Using
                 </a>
             </div>
 
-            <!-- Policy Foo Card -->
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <h2 class="text-xl font-bold mb-2">Policy Foo</h2>
-                <p class="text-gray-600 mb-4">Coming Soon</p>
-                <button class="bg-gray-500 text-white px-4 py-2 rounded cursor-not-allowed">
-                    Coming Soon
-                </button>
+            <!-- Policy Assistant Card -->
+            <div class="bg-white rounded-lg shadow-md p-6 transition-all hover:shadow-lg">
+                <h2 class="text-xl font-bold mb-2">Policy Assistant</h2>
+                <p class="text-gray-600 mb-4">Search and analyze CAF policies with AI assistance</p>
+                <a href="/policy-foo" 
+                   class="inline-block bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors">
+                    Start Using
+                </a>
             </div>
         </div>
 
@@ -81,27 +83,10 @@
     </main>
 
     <!-- JavaScript -->
+    <script src="/static/js/common.js"></script>
     <script>
-        // Check credits status on page load
-        async function checkCredits() {
-            try {
-                const response = await fetch('/llm/credits');
-                const data = await response.json();
-                const banner = document.getElementById('creditsBanner');
-                
-                if (!data.credits_available) {
-                    banner.classList.remove('hidden');
-                } else {
-                    banner.classList.add('hidden');
-                }
-            } catch (error) {
-                console.error('Error checking credits:', error);
-            }
-        }
-
-        // Check credits on page load and every 5 minutes
-        checkCredits();
-        setInterval(checkCredits, 5 * 60 * 1000);
+        // Initialize common features
+        document.addEventListener('DOMContentLoaded', initializeCommon);
     </script>
 </body>
 </html> 

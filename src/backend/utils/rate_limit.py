@@ -73,9 +73,10 @@ class RateLimiter:
         # Cleanup old request IDs (older than a day)
         self.request_ids = {
             rid for rid in self.request_ids
-            if current_time - float(rid.split('-')[0]) < self.day
+            if rid.split('-')[0].startswith('t')  # Only keep our timestamped IDs
+            and current_time - float(rid.split('-')[0][1:]) < self.day  # Remove 't' prefix
         }
-    
+
     def is_allowed(self, ip: str, request_id: str = None) -> bool:
         """Check if request is allowed based on rate limits"""
         # Skip rate limiting for Ollama requests (when credits not available)
@@ -88,7 +89,9 @@ class RateLimiter:
         if request_id:
             if request_id in self.request_ids:
                 return True  # Allow duplicate requests (retries)
-            self.request_ids.add(request_id)
+            # Store with timestamp prefix for cleanup
+            timestamped_id = f"t{time.time()}-{request_id}"
+            self.request_ids.add(timestamped_id)
         
         # Check limits
         if len(self.hourly_requests[ip]) >= self.hourly_limit:

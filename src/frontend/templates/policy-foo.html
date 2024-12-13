@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Policy Assistant - Army-GPT</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="/static/css/common.css" rel="stylesheet">
+    <link href="/static/css/policy-foo.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Header with Navigation -->
+    <header class="bg-gray-800 text-white">
+        <nav class="container mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <div class="text-xl font-bold">
+                        <a href="/" class="hover:text-gray-300 transition-colors">Army-GPT</a>
+                    </div>
+                    <div id="creditsBanner" class="hidden px-2 py-1 bg-amber-500 text-white text-sm rounded transition-all duration-300">
+                        ⚠️ Using Slow and Stupid AI - Out of Money for the Fast and Smart AI
+                    </div>
+                </div>
+                <div class="space-x-4">
+                    <a href="/" class="hover:text-gray-300 transition-colors">Home</a>
+                    <a href="/pace-notes" class="hover:text-gray-300 transition-colors">Pace Notes</a>
+                    <a href="/policy-foo" class="text-blue-400 hover:text-blue-300 transition-colors">Policy Assistant</a>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-6 py-8">
+        <!-- Rate Limit Display -->
+        <div class="absolute top-4 right-4 bg-white p-4 rounded-lg shadow-md">
+            <h3 class="text-sm font-semibold text-gray-700">Remaining Requests</h3>
+            <p class="text-sm text-gray-600">Hour: <span id="hourlyRemaining">--</span></p>
+            <p class="text-sm text-gray-600">Day: <span id="dailyRemaining">--</span></p>
+        </div>
+
+        <!-- Chat Interface -->
+        <div class="max-w-5xl mx-auto">
+            <h1 class="text-3xl font-bold mb-8">Policy Assistant</h1>
+            
+            <!-- Chat Container -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <!-- Messages Area -->
+                <div id="messagesContainer" class="h-[calc(100vh-24rem)] overflow-y-auto mb-6 space-y-4 scroll-smooth">
+                    <!-- Messages will be dynamically added here -->
+                </div>
+
+                <!-- Input Form -->
+                <form id="queryForm" class="space-y-4">
+                    <div class="relative">
+                        <textarea
+                            id="userInput"
+                            class="w-full px-4 py-3 border rounded-lg expandable-textarea focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[60px] max-h-[200px] overflow-y-auto"
+                            placeholder="Ask about CAF policies..."
+                            required
+                        ></textarea>
+                    </div>
+                    <div class="flex justify-end">
+                        <button
+                            type="submit"
+                            class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200"
+                        >
+                            Ask Question
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <!-- JavaScript -->
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/policy-foo.js"></script>
+</body>
+</html> 

@@ -2,9 +2,9 @@ tool:
   name: pace-notes
   description: An AI tool that generates pace notes for CAF Members
 
-Frontend:
-  chat_interface:
-    UI_layout:
+frontend:
+  interface:
+    layout:
       - navigation_bar: top
       - chat_history: none
       - user_input: text_input
@@ -46,15 +46,16 @@ endpoints:
     parameters:
       temperature: 0.1
 
-  main_LLM_API_provider:
+  main_LLM_API_parameters:
     model: PACE_NOTE_MODEL
     temperature: 0.1
-  backup_LLM_API_provider:
+    stream: false
+  backup_LLM_API_parameters:
     model: BACKUP_PACE_NOTE_MODEL
     num_ctx: BACKUP_PACE_NOTE_NUM_CTX
     batch_size: BACKUP_PACE_NOTE_BATCH_SIZE
     temperature: 0.1
-
+    stream: true
 
 state_management:
   type: in_memory

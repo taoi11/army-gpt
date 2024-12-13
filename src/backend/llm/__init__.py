@@ -2,10 +2,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from src.backend.utils.monitoring import MetricsMiddleware
 from src.backend.utils.logger import logger
 from src.backend.utils.errors import error_handler
 from src.backend.utils.rate_limit import RateLimitMiddleware, rate_limiter
+from src.backend.utils.web import router as web_router
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -16,6 +18,9 @@ app = FastAPI(
 
 # Setup templates
 templates = Jinja2Templates(directory="src/frontend/templates")
+
+# Setup static files
+app.mount("/static", StaticFiles(directory="src/frontend/static"), name="static")
 
 # Setup CORS
 app.add_middleware(
@@ -35,16 +40,6 @@ app.add_middleware(MetricsMiddleware)
 # Add error handler
 app.add_exception_handler(Exception, error_handler)
 
-# Root route
-@app.get("/", response_class=HTMLResponse)
-async def root(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
-
-# Pace notes route
-@app.get("/pace-notes", response_class=HTMLResponse)
-async def pace_notes(request: Request):
-    return templates.TemplateResponse("pace-notes.html", {"request": request})
-
 # Rate limits endpoint
 @app.get("/api/limits")
 async def get_rate_limits(request: Request):
@@ -59,8 +54,14 @@ async def get_rate_limits(request: Request):
     )
 
 # Import and include routers
-from .routes import router as pace_notes_router
+from .routes import router as llm_router
+from src.backend.policyfoo import init_app as init_policyfoo
 
-app.include_router(pace_notes_router)
+# Initialize modules
+init_policyfoo()
+
+# Include routers
+app.include_router(web_router)  # Add web routes first
+app.include_router(llm_router)
 
 logger.info("FastAPI application initialized with rate limiting") 

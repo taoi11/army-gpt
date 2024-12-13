@@ -30,7 +30,7 @@ CRITICAL RULES:
 3. ALWAYS include the policy number
 4. Copy text EXACTLY from the document when replying with a relevant section
 5. Do not summarize or paraphrase policy content
-6. Do not add markdown code blocks
+6. Do not use markdown code blocks
 7. If multiple sections are relevant, include them all in the content
 8. Keep the XML structure exactly as shown in the examples
 

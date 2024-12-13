@@ -35,10 +35,17 @@ directory_structure: |
   │   ├── frontend/
   │   │   ├── templates/   # HTML templates
   │   │   │   ├── index.html
-  │   │   │   └── pace-notes.html
+  │   │   │   ├── pace-notes.html
+  │   │   │   └── policy-foo.html
   │   │   └── static/      # Static assets
   │   │       ├── css/
+  │   │       │   ├── common.css
+  │   │       │   ├── pace-notes.css
+  │   │       │   └── policy-foo.css
   │   │       ├── js/
+  │   │       │   ├── common.js
+  │   │       │   ├── pace-notes.js
+  │   │       │   └── policy-foo.js
   │   │       └── img/
   │   ├── backend/
   │   │   ├── llm/         # LLM-specific code
@@ -49,6 +56,11 @@ directory_structure: |
   │   │   │   └── monitoring.py
   │   │   ├── pacenote/    # Pace notes module
   │   │   │   └── __init__.py      # Contains PaceNoteAgent
+  │   │   ├── policyfoo/   # Policy finder module
+  │   │   │   ├── __init__.py
+  │   │   │   ├── finder.py        # Policy finder agent
+  │   │   │   ├── reader.py        # Policy reader agent
+  │   │   │   └── chat.py          # Chat agent
   │   │   └── utils/       # Shared utilities
   │   │       ├── errors.py
   │   │       ├── logger.py
@@ -56,7 +68,9 @@ directory_structure: |
   │   │       ├── rate_limit.py
   │   │       └── web.py
   │   └── prompts/         # LLM system prompts
-  │       └── pace-note.md
+  │       ├── pace-note.md
+  │       ├── policy-finder.md
+  │       └── policy-chat.md
   ├── tests/               # Test files
   ├── data/                # Temp data storage
   ├── Dockerfile
@@ -111,9 +125,15 @@ structure:
       - /llm/pace-notes/generate:
           methods: [POST]
           description: Generate pace notes using LLM
+      - /llm/policyfoo/generate:
+          methods: [POST]
+          description: Generate policy responses using LLM
       - /llm/credits:
           methods: [GET]
           description: Get current LLM credit status
+      - /api/limits:
+          methods: [GET]
+          description: Get current rate limit status
     
     rate_limiting:
       strategy: sliding_window

@@ -12,8 +12,6 @@ services:
       - ./data:/data
     env_file:
       - .env
-    environment:
-      - DEBUG_MODE=false
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8020/health"]

@@ -1,0 +1,44 @@
+/* Common animations */
+.thinking {
+    color: #6B7280;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.thinking::after {
+    content: '';
+    animation: thinking 1.5s infinite;
+    font-family: monospace;
+}
+
+@keyframes thinking {
+    0% { content: ''; }
+    25% { content: '.'; }
+    50% { content: '..'; }
+    75% { content: '...'; }
+    100% { content: ''; }
+}
+
+/* Common transitions */
+.transition-all {
+    transition: all 0.3s ease-in-out;
+}
+
+/* Common scroll behavior */
+.scroll-margin {
+    scroll-margin: 1rem;
+}
+
+/* Common textarea behavior */
+.expandable-textarea {
+    transition: all 0.3s ease;
+    resize: none;
+    min-height: 60px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.expandable-textarea:focus {
+    min-height: 100px;
+} 
