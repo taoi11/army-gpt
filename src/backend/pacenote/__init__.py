@@ -1,20 +1,34 @@
 from src.backend.utils.logger import logger
 from src.backend.llm.provider import llm_provider
 from src.backend.utils.monitoring import track_api_call
+import os
 import uuid
 
 class PaceNoteAgent:
     """Agent for generating pace notes"""
     
-    # LLM settings
+    # Load model settings from environment
+    PRIMARY_MODEL = os.getenv("PACE_NOTE_MODEL")
+    BACKUP_MODEL = os.getenv("BACKUP_PACE_NOTE_MODEL")
+    BACKUP_CTX = int(os.getenv("BACKUP_PACE_NOTE_NUM_CTX", "1000"))
+    BACKUP_BATCH = int(os.getenv("BACKUP_PACE_NOTE_BATCH_SIZE", "128"))
+    
+    # File paths relative to /app/src
+    SYSTEM_PROMPT_PATH = "prompts/pace-note.md"
+    COMPETENCIES_PATH = "policies/pace-note/competency.md"
+    EXAMPLES_PATH = "policies/pace-note/example_notes.md"
+    
+    # LLM settings from pace-note.yml
     PRIMARY_OPTIONS = {
-        "temperature": 0.1  # Default temperature
+        "temperature": 0.1,  # Default temperature from pace-note.yml
+        "model": PRIMARY_MODEL
     }
     
     BACKUP_OPTIONS = {
-        "temperature": 0.1,  # Default temperature
-        "num_ctx": 14336,    # Context window size
-        "num_batch": 256     # Batch size for processing
+        "temperature": 0.1,  # Default temperature from pace-note.yml
+        "model": BACKUP_MODEL,
+        "num_ctx": BACKUP_CTX,
+        "num_batch": BACKUP_BATCH
     }
     
     @staticmethod
@@ -57,25 +71,30 @@ class PaceNoteAgent:
         """Load and format system prompt"""
         try:
             # Load system prompt template
-            with open("src/prompts/pace-note.md", "r") as f:
+            with open(os.path.join("/app/src", PaceNoteAgent.SYSTEM_PROMPT_PATH), "r") as f:
                 system_prompt = f.read()
             
-            # Load competencies from policy file
+            # Load competencies
             try:
-                with open("src/policies/pace-note/competency.md", "r") as f:
+                with open(os.path.join("/app/src", PaceNoteAgent.COMPETENCIES_PATH), "r") as f:
                     competencies_content = f.read()
                 competency_list = PaceNoteAgent.parse_competencies(competencies_content)
             except Exception as e:
                 logger.error(f"Error loading competencies: {e}")
                 competency_list = "Error loading competencies"
             
-            # Load examples from policy file - pass through raw content
+            # Load examples
             try:
-                with open("src/policies/pace-note/example_notes.md", "r") as f:
+                with open(os.path.join("/app/src", PaceNoteAgent.EXAMPLES_PATH), "r") as f:
                     examples = f.read()
             except Exception as e:
                 logger.error(f"Error loading examples: {e}")
                 examples = "Error loading examples"
+            
+            # Add more detailed logging for debugging
+            logger.debug(f"System prompt loaded: {len(system_prompt)} chars")
+            logger.debug(f"Competency list loaded: {len(competency_list)} chars")
+            logger.debug(f"Examples loaded: {len(examples)} chars")
             
             return system_prompt.replace(
                 "{{competency_list}}", 
@@ -85,11 +104,12 @@ class PaceNoteAgent:
                 examples
             )
         except Exception as e:
-            logger.error(f"Error loading system prompt: {e}")
+            logger.error(f"Error loading system prompt: {str(e)}")
+            logger.error(f"Current working directory: {os.getcwd()}")
             return None
 
     @staticmethod
-    def generate(content: str, temperature: float = 0.1, request_id: str = None) -> str:
+    def generate(content: str, temperature: float = 0.1, request_id: str = None, stream: bool = False):
         """Generate a pace note using the LLM"""
         try:
             # Generate request ID if not provided
@@ -113,20 +133,32 @@ class PaceNoteAgent:
             backup_options["temperature"] = temperature
                 
             # Generate note using LLM with tool-specific options
-            note = llm_provider.generate_completion(
+            response = llm_provider.generate_completion(
                 prompt=content,
                 system_prompt=system_prompt,
                 primary_options=primary_options,
                 backup_options=backup_options,
-                request_id=request_id
+                request_id=request_id,
+                stream=stream
             )
             
-            if note:
+            if stream:
+                async def stream_response():
+                    try:
+                        for chunk in response:
+                            yield chunk
+                        track_api_call("pace_note_generate", "success")
+                    except Exception as e:
+                        logger.error(f"Error in streaming response: {e}")
+                        track_api_call("pace_note_generate", "failed")
+                return stream_response()
+            
+            if response:
                 track_api_call("pace_note_generate", "success")
             else:
                 track_api_call("pace_note_generate", "failed")
                 
-            return note
+            return response
             
         except Exception as e:
             logger.error(f"Error generating pace note: {str(e)}")

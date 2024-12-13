@@ -1,5 +1,3 @@
-# pace_notes.yml
-
 tool:
   name: pace-notes
   description: An AI tool that generates pace notes for CAF Members
@@ -15,28 +13,28 @@ Frontend:
       # TODO: Implement rank selection
       # - dropdown_menu: rank selection
       #   dynamic_options:
-      #     - path: /src/prompts/competencies/{rank}.json
+      #     - path: /src/prompts/competencies{rank}.md
 
 knowledge_base:
   sources:
     # TODO: Implement rank-based competencies
     # - type: files
-    #   path: /src/prompts/competencies/{rank}.json
-    #   format: json
+    #   path: /src/prompts/competencies{rank}.md
+    #   format: markdown table
     #   usage:
     #     - dynamically added into LLM system prompt
     - type: files
-      path: /policies/pace_notes/compitences-{rank}.md
+      path: /src/policies/pace-note/competency-{{rank}}.md  # for now /policies/pace-note/competency.md
       format: markdown
       usage:
         - dynamically added into LLM system prompt
     - type: files
-      path: /prompts/pace_notes/examples.md
+      path: /src/policies/pace-note/example_notes.md
       format: markdown
       usage:
         - dynamically added into LLM system prompt
     - type: files
-      path: /prompts/pace_notes/system_prompt.md
+      path: /src/prompts/pace-note.md
       format: markdown
       usage:
         - main system prompt for the tool
@@ -48,17 +46,15 @@ endpoints:
     parameters:
       temperature: 0.1
 
-  LLM_provider:
-    - type: primary  
-      framework: openai_api # python library
-      base_url: env var # default: openrouter.ai
-      api_key: env var
-      model: env var
-    - type: back_up
-      framework: ollama # python library
-      base_url: env var
-      api_key: null
-      model: env var
+  main_LLM_API_provider:
+    model: PACE_NOTE_MODEL
+    temperature: 0.1
+  backup_LLM_API_provider:
+    model: BACKUP_PACE_NOTE_MODEL
+    num_ctx: BACKUP_PACE_NOTE_NUM_CTX
+    batch_size: BACKUP_PACE_NOTE_BATCH_SIZE
+    temperature: 0.1
+
 
 state_management:
   type: in_memory

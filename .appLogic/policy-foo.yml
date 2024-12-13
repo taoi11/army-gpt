@@ -1,0 +1,182 @@
+tool:
+  name: policy-foo
+  description: Multi-agent system for policy search, analysis and answering user queries
+
+frontend:
+  interface:
+    layout:
+      - navigation_bar: top
+      - conversation_panel:
+          width: 75%
+          components:
+            - chat_history:
+                retention: session
+                display:
+                  - user_messages
+                  - ai_responses
+                  - policy_references:
+                      style: subsection of the LLM response box
+            - input_area:
+                type: expandable_textarea
+                placeholder: "Ask about CAF policies..."
+            - submit_button:
+                type: streaming_disabled
+
+backend:
+  agents:
+    policyFinder:
+      role: identify relevant policies for the down-stream agents
+      system_prompt: /prompts/policyFinder.md
+      input:
+        - systemPrompt: policyFinder.md + DOAD-list-table.md
+        - userPrompt: user query
+        - conversation_history: last_5_exchanges # make use of the assistant and user roles in the LLM API
+      output:
+        format: comma-separated-string
+        validation: Simple parsing of the policy numbers
+      knowledge_base:
+        - /policies/doad/DOAD-list-table.md
+        - /policies/doad/{{policy_number}}.md # /policies/doad/1000-1.md
+      main_LLM_API_parameters:
+        model: POLICY_FINDER_MODEL
+        temperature: 0.1
+      backup_LLM_API_parameters:
+        model: BACKUP_POLICY_FINDER_MODEL
+        num_ctx: BACKUP_POLICY_FINDER_NUM_CTX
+        batch_size: BACKUP_POLICY_FINDER_BATCH_SIZE
+        temperature: 0.1
+    policyReader:
+      role: extract relevant content from the policy
+      system_prompt: /prompts/policyReader.md
+      input:
+        - systemPrompt: policyReader.md + {{policy_number}}.md
+        - userPrompt: user query
+        - conversation_history: last_5_exchanges # make use of the assistant and user roles in the LLM API
+      output:
+        format: structured_text
+        validation: none # just send the response string to chatAgent as is
+      knowledge_base:
+        - /policies/doad/{{policy_number}}.md # /policies/doad/1000-1.md
+      main_LLM_API_parameters:
+        model: POLICY_READER_MODEL
+        temperature: 0.1
+        execution:
+          type: parallel
+          stagger: 250ms
+          timeout: 5s
+      backup_LLM_API_parameters:
+        model: BACKUP_POLICY_READER_MODEL
+        num_ctx: BACKUP_POLICY_READER_NUM_CTX
+        batch_size: BACKUP_POLICY_READER_BATCH_SIZE
+        temperature: 0.1
+        execution:
+          type: sequential
+          timeout: 60s 
+    chatAgent:
+      model: CHAT_AGENT_MODEL
+      role: user-interaction
+      system_prompt: /prompts/chatAgent.md
+      input:
+        - systemPrompt: chatAgent.md + {{policy_extracts}}
+        - userPrompt: user query
+        - conversation_history: last_5_exchanges # make use of the assistant and user roles in the LLM API
+      output:
+        format: structured_response
+        xml_sections:
+          - formatted_answer
+          - policy_references
+          - suggested_followups # "DOAD XX.XX: Sections X.X, X.X"
+      main_LLM_API_parameters:
+        model: CHAT_AGENT_MODEL
+        temperature: 0.1
+      backup_LLM_API_parameters:
+        model: BACKUP_CHAT_AGENT_MODEL
+        num_ctx: BACKUP_CHAT_AGENT_NUM_CTX
+        batch_size: BACKUP_CHAT_AGENT_BATCH_SIZE
+        temperature: 0.1
+
+
+workflow_manager:
+  orchestration:
+    - initialize:
+        action: receive_query
+        handler: fastapi_endpoint
+        endpoint: /api/v1/policy-foo/query
+        method: POST
+        validation:
+          - rate_limiting
+          - input_sanitization
+    
+    - find_policies:
+        action: policy_identification
+        handler: policyFinder
+        error_handling:
+          retry_count: 2
+          fallback: cached_common_policies
+    
+    - read_policies:
+        action: parallel_extraction
+        handler: policyReader
+        optimization:
+          caching:
+            ttl: 1h
+            key_pattern: "policy:{id}:query:{hash}"
+    
+    - synthesize:
+        action: combine_extracts
+        handler: python_function
+        method: weighted_relevance_merge
+    
+    - generate_response:
+        action: create_response
+        handler: chatAgent
+        features:
+          - streaming_enabled
+          - reference_annotation
+    
+    - finish:
+        action: update_session
+        handler: session_manager
+        operations:
+          - update_history
+          - cache_references
+          - log_metrics
+
+state_management:
+  session:
+    storage: redis
+    ttl: 24h
+    structure:
+      conversation_history:
+        max_length: 10
+        pruning: fifo
+      policy_references:
+        format: ordered_set
+        max_size: 50
+
+monitoring:
+  metrics:
+    - agent_performance:
+        - latency
+        - success_rate
+        - token_usage
+    - user_interactions:
+        - query_patterns
+        - policy_coverage
+    - system_health:
+        - agent_availability
+        - response_times
+    - error_tracking:
+        - agent_failures
+        - workflow_breaks
+
+security:
+  rate_limiting:
+    inherit: true  # Inherits from main app config
+  data_handling:
+    user_data:
+      storage: none
+      logging: disabled
+    policy_data:
+      storage: cached
+      encryption: at_rest
