@@ -1,3 +1,6 @@
+// Constants
+const MAX_RESPONSES = 5;  // Maximum number of response cards to keep
+
 // Track active request
 let activeReader = null;
 let abortController = null;
@@ -52,16 +55,6 @@ function setupCleanupListeners() {
             navigator.sendBeacon('/llm/pace-notes/cancel');
         }
     });
-
-    // Also listen for the beforeunload event
-    window.addEventListener('beforeunload', (event) => {
-        cleanupActiveRequest();
-        // Custom message for the confirmation dialog
-        const message = 'This will reset the page and cancel any ongoing responses.';
-        event.preventDefault();
-        event.returnValue = message;
-        return message;  // For older browsers
-    });
 }
 
 // Handle form submission
@@ -75,8 +68,7 @@ async function handleSubmit(e) {
     const userInput = document.getElementById('userInput').value.trim();
     if (!userInput) return;
 
-    // Reset textarea
-    document.getElementById('userInput').value = '';
+    // Reset textarea height only
     document.getElementById('userInput').style.height = 'auto';
 
     // Create new response box
@@ -206,8 +198,6 @@ async function handleSubmit(e) {
 
 // Initialize pace notes functionality
 function initializePaceNotes() {
-    const MAX_RESPONSES = 5;  // Maximum number of response cards to keep
-
     // Setup form handler
     document.getElementById('paceNoteForm').addEventListener('submit', handleSubmit);
 
