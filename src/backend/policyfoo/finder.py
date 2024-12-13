@@ -156,8 +156,10 @@ class PolicyFinder:
                 logger.debug("[PolicyFinder] No policies found with context, trying without context")
                 return await self.find_relevant_policies(query=query, request_id=request_id)
             
+            # Always log found policies at INFO level
             if policies:
                 logger.info(f"[PolicyFinder] Found {len(policies)} relevant policies: {policies}")
+            
             return policies
             
         except Exception as e:

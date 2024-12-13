@@ -142,9 +142,9 @@ class PolicyReader:
                 agent_name="PolicyReader"  # Add agent name to identify messages
             )
             
-            # Only log response at INFO level if it's not empty
-            if response:
-                logger.info(f"[PolicyReader] Policy {policy_number} response: {truncate_llm_response(response)}")
+            # Log response at debug level only
+            if response and logger.isEnabledFor(10):  # DEBUG level
+                logger.debug(f"[PolicyReader] Policy {policy_number} response: {truncate_llm_response(response)}")
             return response
             
         except Exception as e:

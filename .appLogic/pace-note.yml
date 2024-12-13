@@ -10,10 +10,9 @@ frontend:
       - user_input: text_input
       - submit_button: send
       - response_output: text_output
-      # TODO: Implement rank selection
-      # - dropdown_menu: rank selection
-      #   dynamic_options:
-      #     - path: /src/prompts/competencies{rank}.md
+      - cleanup_behavior:
+          page_leave: silent
+          request_cleanup: true
 
 knowledge_base:
   sources:
@@ -84,3 +83,11 @@ monitoring and logging:
     - Request and general usage
     - Active users per 15 minute intervals
     - error_logs
+  logging_strategy:
+    debug_mode:
+      - system_prompt_details: conditional
+      - message_history: conditional
+      - llm_responses: conditional
+    info_mode:
+      - api_call_tracking: always
+      - success_failure: always

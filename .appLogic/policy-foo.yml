@@ -34,6 +34,13 @@ backend:
       output:
         format: comma-separated-string
         validation: Simple parsing of the policy numbers
+      logging:
+        prefix: "[PolicyFinder]"
+        debug_mode:
+          - llm_responses: conditional
+          - message_history: conditional
+        info_mode:
+          - found_policies: always
       main_LLM_API_parameters:
         model: POLICY_FINDER_MODEL
         temperature: 0.1
@@ -58,6 +65,14 @@ backend:
       output:
         format: structured_text
         validation: none # just send the response string to chatAgent as is
+      logging:
+        prefix: "[PolicyReader]"
+        debug_mode:
+          - llm_responses: conditional
+          - message_history: conditional
+          - policy_responses: conditional
+        info_mode:
+          - found_policies: always
       knowledge_base:
         - /policies/doad/{{policy_number}}.md # /policies/doad/1000-1.md
       main_LLM_API_parameters:
@@ -90,6 +105,12 @@ backend:
           - formatted_answer
           - policy_references
           - suggested_followups # "DOAD XX.XX: Sections X.X, X.X"
+      logging:
+        prefix: "[ChatAgent]"
+        debug_mode:
+          - llm_responses: conditional
+          - message_history: conditional
+          - request_details: conditional
       main_LLM_API_parameters:
         model: CHAT_AGENT_MODEL
         temperature: 0.1

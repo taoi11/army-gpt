@@ -172,3 +172,18 @@ monitoring:
     - request_counts and rates
     - user_counts and activity
     - error_logs
+  logging_strategy:  # Added: Global logging strategy
+    debug_mode:
+      enabled_by: logger.isEnabledFor(10)
+      message_format: "[{agent_name}] {message}"
+      conditional_logging:
+        - message_history
+        - llm_responses
+        - request_details
+        - policy_responses
+    info_mode:
+      message_format: "[{agent_name}] {message}"
+      always_log:
+        - api_call_tracking
+        - success_failure
+        - found_policies
