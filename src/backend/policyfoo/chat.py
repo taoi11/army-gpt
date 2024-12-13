@@ -105,16 +105,6 @@ class ChatAgent:
         if current_prompt_key not in seen_messages:
             formatted_messages.append({"role": "user", "content": query})
         
-        # Log the formatted messages
-        truncated_messages = [
-            {
-                "role": msg["role"],
-                "content": truncate_llm_response(msg["content"])
-            }
-            for msg in formatted_messages
-        ]
-        logger.debug(f"Formatted messages: {json.dumps(truncated_messages, indent=2)}")
-        
         return formatted_messages
 
     async def generate_response(
@@ -135,9 +125,10 @@ class ChatAgent:
                 self.PRIMARY_OPTIONS["temperature"] = temperature
                 self.BACKUP_OPTIONS["temperature"] = temperature
             
-            logger.debug(f"Making LLM request for chat response")
-            logger.debug(f"Query: {truncate_llm_response(query)}")
-            logger.debug(f"Request ID: {request_id}")
+            if logger.isEnabledFor(10):  # DEBUG level
+                logger.debug(f"[ChatAgent] Making LLM request for chat response")
+                logger.debug(f"[ChatAgent] Query: {truncate_llm_response(query)}")
+                logger.debug(f"[ChatAgent] Request ID: {request_id}")
                 
             # Generate response
             response = llm_provider.generate_completion(
@@ -146,14 +137,16 @@ class ChatAgent:
                 messages=messages,  # Pass formatted messages directly
                 primary_options=self.PRIMARY_OPTIONS,
                 backup_options=self.BACKUP_OPTIONS,
-                request_id=request_id
+                request_id=request_id,
+                agent_name="ChatAgent"  # Add agent name to identify messages
             )
             
-            logger.debug(f"LLM chat response: {truncate_llm_response(response)}")
+            if logger.isEnabledFor(10):  # DEBUG level
+                logger.debug(f"[ChatAgent] LLM response: {truncate_llm_response(response)}")
             return response
             
         except Exception as e:
-            logger.error(f"Error generating chat response: {str(e)}")
+            logger.error(f"[ChatAgent] Error generating chat response: {str(e)}")
             return None
 
 # Create singleton instance

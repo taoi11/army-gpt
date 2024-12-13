@@ -91,10 +91,11 @@ class PaceNoteAgent:
                 logger.error(f"Error loading examples: {e}")
                 examples = "Error loading examples"
             
-            # Add more detailed logging for debugging
-            logger.debug(f"System prompt loaded: {len(system_prompt)} chars")
-            logger.debug(f"Competency list loaded: {len(competency_list)} chars")
-            logger.debug(f"Examples loaded: {len(examples)} chars")
+            # Add more detailed logging for debugging only if debug is enabled
+            if logger.isEnabledFor(10):  # DEBUG level
+                logger.debug(f"System prompt loaded: {len(system_prompt)} chars")
+                logger.debug(f"Competency list loaded: {len(competency_list)} chars")
+                logger.debug(f"Examples loaded: {len(examples)} chars")
             
             return system_prompt.replace(
                 "{{competency_list}}", 
@@ -139,7 +140,8 @@ class PaceNoteAgent:
                 primary_options=primary_options,
                 backup_options=backup_options,
                 request_id=request_id,
-                stream=stream
+                stream=stream,
+                agent_name="PaceNoteAgent"  # Add agent name to identify messages
             )
             
             if stream:
@@ -149,10 +151,11 @@ class PaceNoteAgent:
                             yield chunk
                         track_api_call("pace_note_generate", "success")
                     except Exception as e:
-                        logger.error(f"Error in streaming response: {e}")
+                        logger.error(f"[PaceNoteAgent] Error in streaming response: {e}")
                         track_api_call("pace_note_generate", "failed")
                 return stream_response()
             
+            # Only track success if we got a response
             if response:
                 track_api_call("pace_note_generate", "success")
             else:
@@ -161,7 +164,7 @@ class PaceNoteAgent:
             return response
             
         except Exception as e:
-            logger.error(f"Error generating pace note: {str(e)}")
+            logger.error(f"[PaceNoteAgent] Error generating pace note: {e}")
             track_api_call("pace_note_generate", "failed")
             return None
 

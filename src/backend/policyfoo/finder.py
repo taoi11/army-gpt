@@ -102,16 +102,6 @@ class PolicyFinder:
             "content": query
         })
         
-        # Log the formatted messages
-        truncated_messages = [
-            {
-                "role": msg["role"],
-                "content": truncate_llm_response(msg["content"])
-            }
-            for msg in messages
-        ]
-        logger.debug(f"Formatted messages: {json.dumps(truncated_messages, indent=2)}")
-        
         return messages
 
     async def find_relevant_policies(
@@ -139,14 +129,15 @@ class PolicyFinder:
                 messages=messages,  # Pass formatted messages directly
                 primary_options=self.PRIMARY_OPTIONS,
                 backup_options=self.BACKUP_OPTIONS,
-                request_id=request_id
+                request_id=request_id,
+                agent_name="PolicyFinder"  # Add agent name to identify messages
             )
             
-            # Log LLM response
-            logger.debug(f"LLM response: {truncate_llm_response(response)}")
+            if logger.isEnabledFor(10):  # DEBUG level
+                logger.debug(f"[PolicyFinder] LLM response: {truncate_llm_response(response)}")
             
             if not response:
-                logger.error("No response from LLM")
+                logger.error("[PolicyFinder] No response from LLM")
                 return []
             
             # Parse response into list of policy numbers
@@ -162,15 +153,16 @@ class PolicyFinder:
             
             # If no policies found but we have context, try again without context
             if not policies and conversation_history:
-                logger.debug("No policies found with context, trying without context")
+                logger.debug("[PolicyFinder] No policies found with context, trying without context")
                 return await self.find_relevant_policies(query=query, request_id=request_id)
             
-            logger.info(f"Found {len(policies)} relevant policies: {policies}")
+            if policies:
+                logger.info(f"[PolicyFinder] Found {len(policies)} relevant policies: {policies}")
             return policies
             
         except Exception as e:
-            logger.error(f"Error finding relevant policies: {str(e)}")
-            logger.debug(f"Full error details: {str(e)}", exc_info=True)
+            logger.error(f"[PolicyFinder] Error finding relevant policies: {str(e)}")
+            logger.debug(f"[PolicyFinder] Full error details: {str(e)}", exc_info=True)
             return []
 
 # Create singleton instance

@@ -41,7 +41,8 @@ class LLMProvider:
         primary_options: Optional[Dict] = None,
         backup_options: Optional[Dict] = None,
         request_id: Optional[str] = None,
-        stream: bool = False
+        stream: bool = False,
+        agent_name: Optional[str] = None
     ) -> Union[str, Generator[str, None, None]]:
         """Generate completion using primary or backup LLM"""
         try:
@@ -50,7 +51,8 @@ class LLMProvider:
                 prompt=prompt,
                 system_prompt=system_prompt,
                 messages=messages,
-                conversation_history=conversation_history
+                conversation_history=conversation_history,
+                agent_name=agent_name
             )
             
             # Try primary LLM first
@@ -60,7 +62,8 @@ class LLMProvider:
                     system_prompt=system_prompt,
                     messages=formatted_messages,
                     options=primary_options,
-                    request_id=request_id
+                    request_id=request_id,
+                    agent_name=agent_name
                 )
             except Exception as e:
                 logger.error(f"Primary LLM failed: {str(e)}")
@@ -73,7 +76,8 @@ class LLMProvider:
                     messages=formatted_messages,
                     options=backup_options,
                     request_id=request_id,
-                    stream=stream
+                    stream=stream,
+                    agent_name=agent_name
                 )
                 
         except Exception as e:
@@ -86,7 +90,8 @@ class LLMProvider:
         prompt: str, 
         system_prompt: str,
         messages: Optional[List[Dict[str, str]]] = None,
-        conversation_history: Optional[List[Message]] = None
+        conversation_history: Optional[List[Message]] = None,
+        agent_name: Optional[str] = None
     ) -> List[Dict[str, str]]:
         """Prepare messages list for API request"""
         formatted_messages = []
@@ -119,15 +124,17 @@ class LLMProvider:
         if current_prompt_key not in seen_messages:
             formatted_messages.append({"role": "user", "content": prompt})
         
-        # Log full conversation history in JSON format
-        truncated_messages = [
-            {
-                "role": msg["role"],
-                "content": truncate_llm_response(msg["content"])
-            }
-            for msg in formatted_messages
-        ]
-        logger.debug(f"Messages: {json.dumps(truncated_messages, indent=2)}")
+        # Only log message history in debug mode and if explicitly requested
+        if logger.isEnabledFor(10):  # DEBUG level
+            truncated_messages = [
+                {
+                    "role": msg["role"],
+                    "content": truncate_llm_response(msg["content"])
+                }
+                for msg in formatted_messages
+            ]
+            prefix = f"[{agent_name}] " if agent_name else ""
+            logger.debug(f"{prefix}Messages: {json.dumps(truncated_messages, indent=2)}")
         
         return formatted_messages
 
@@ -138,7 +145,8 @@ class LLMProvider:
         messages: Optional[List[Dict[str, str]]] = None,
         conversation_history: Optional[List[Message]] = None,
         options: Dict = None,
-        request_id: str = None
+        request_id: str = None,
+        agent_name: Optional[str] = None
     ) -> str:
         """Generate completion using primary LLM (OpenRouter)"""
         model = options.get("model")
@@ -147,17 +155,9 @@ class LLMProvider:
             
         # Use provided messages or format from conversation history
         if not messages:
-            messages = self._prepare_messages(prompt, system_prompt, conversation_history)
+            messages = self._prepare_messages(prompt, system_prompt, conversation_history, agent_name=agent_name)
         
-        # Log the messages being sent
-        truncated_messages = [
-            {
-                "role": msg["role"],
-                "content": truncate_llm_response(msg["content"])
-            }
-            for msg in messages
-        ]
-        logger.debug(f"Messages: {json.dumps(truncated_messages, indent=2)}")
+        prefix = f"[{agent_name}] " if agent_name else ""
         
         try:
             response = requests.post(
@@ -176,23 +176,30 @@ class LLMProvider:
                 timeout=self.primary_timeout
             )
             
-            # Log response details in debug mode
-            logger.debug(f"OpenRouter response status: {response.status_code}")
-            if response.status_code != 200:
-                logger.debug(f"OpenRouter error response: {response.text}")
+            # Log response details only in debug mode
+            if logger.isEnabledFor(10):  # DEBUG level
+                logger.debug(f"{prefix}OpenRouter response status: {response.status_code}")
+                if response.status_code != 200:
+                    logger.debug(f"{prefix}OpenRouter error response: {response.text}")
             
             response.raise_for_status()
-            return response.json()["choices"][0]["message"]["content"]
+            result = response.json()["choices"][0]["message"]["content"]
+            
+            # Log truncated response at debug level only
+            if logger.isEnabledFor(10):
+                logger.debug(f"{prefix}Response: {truncate_llm_response(result)}")
+                
+            return result
             
         except requests.exceptions.HTTPError as e:
             if response.status_code == 402:
-                logger.error("OpenRouter credits exhausted")
+                logger.error(f"{prefix}OpenRouter credits exhausted")
                 raise ValueError("OpenRouter credits exhausted") from e
             elif response.status_code == 429:
-                logger.error("OpenRouter rate limit exceeded")
+                logger.error(f"{prefix}OpenRouter rate limit exceeded")
                 raise ValueError("OpenRouter rate limit exceeded") from e
             elif response.status_code == 500:
-                logger.error(f"OpenRouter server error: {response.text}")
+                logger.error(f"{prefix}OpenRouter server error: {response.text}")
                 raise ValueError("OpenRouter server error") from e
             raise
 
@@ -204,7 +211,8 @@ class LLMProvider:
         conversation_history: Optional[List[Message]] = None,
         options: Dict = None,
         request_id: str = None,
-        stream: bool = False
+        stream: bool = False,
+        agent_name: Optional[str] = None
     ) -> Union[str, Generator[str, None, None]]:
         """Generate completion using backup LLM (Ollama)"""
         model = options.get("model")
@@ -213,23 +221,16 @@ class LLMProvider:
             
         # Use provided messages or format from conversation history
         if not messages:
-            messages = self._prepare_messages(prompt, system_prompt, conversation_history)
+            messages = self._prepare_messages(prompt, system_prompt, conversation_history, agent_name=agent_name)
         
-        # Log request details
-        logger.debug(f"Making backup LLM request to {self.backup_base_url}")
-        logger.debug(f"Model: {model}")
-        logger.debug(f"Request ID: {request_id}")
-        logger.debug(f"Options: {options}")
+        prefix = f"[{agent_name}] " if agent_name else ""
         
-        # Log messages with truncated content
-        truncated_messages = [
-            {
-                "role": msg["role"],
-                "content": truncate_llm_response(msg["content"])
-            }
-            for msg in messages
-        ]
-        logger.debug(f"Messages: {json.dumps(truncated_messages, indent=2)}")
+        # Log request details only in debug mode
+        if logger.isEnabledFor(10):  # DEBUG level
+            logger.debug(f"{prefix}Making backup LLM request to {self.backup_base_url}")
+            logger.debug(f"{prefix}Model: {model}")
+            logger.debug(f"{prefix}Request ID: {request_id}")
+            logger.debug(f"{prefix}Options: {options}")
         
         try:
             # Format request according to Ollama API
@@ -244,13 +245,6 @@ class LLMProvider:
                 }
             }
             
-            # Log formatted request with truncated messages
-            truncated_request = {
-                **request_data,
-                "messages": truncated_messages
-            }
-            logger.debug(f"Formatted Ollama request: {json.dumps(truncated_request, indent=2)}")
-            
             response = requests.post(
                 f"{self.backup_base_url}/api/chat",
                 json=request_data,
@@ -258,9 +252,10 @@ class LLMProvider:
                 stream=stream  # Enable HTTP streaming
             )
             
-            # Log response details
-            logger.debug(f"Backup LLM response status: {response.status_code}")
-            logger.debug(f"Response headers: {dict(response.headers)}")
+            # Log response details only in debug mode
+            if logger.isEnabledFor(10):  # DEBUG level
+                logger.debug(f"{prefix}Backup LLM response status: {response.status_code}")
+                logger.debug(f"{prefix}Response headers: {dict(response.headers)}")
             
             response.raise_for_status()
             
@@ -270,26 +265,30 @@ class LLMProvider:
                         if line:
                             try:
                                 chunk = json.loads(line)
-                                logger.debug(f"Stream chunk: {chunk}")
+                                if logger.isEnabledFor(10):  # DEBUG level
+                                    logger.debug(f"{prefix}Stream chunk: {chunk}")
                                 if "message" in chunk and chunk["message"].get("content"):
                                     yield chunk["message"]["content"]
                             except json.JSONDecodeError as e:
-                                logger.error(f"Error decoding streaming response: {e}")
+                                logger.error(f"{prefix}Error decoding streaming response: {e}")
                                 continue
                 return generate()
-            
+                
             result = response.json()
-            logger.debug(f"Backup LLM response content: {result}")
+            
+            # Log response only in debug mode
+            if logger.isEnabledFor(10):  # DEBUG level
+                logger.debug(f"{prefix}Response: {truncate_llm_response(result)}")
             
             if "message" in result:
                 return result["message"]["content"]
             
-            logger.error(f"Unexpected Ollama response format: {result}")
+            logger.error(f"{prefix}Unexpected Ollama response format: {result}")
             raise ValueError("Unexpected response format from backup LLM")
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"Backup LLM request failed: {str(e)}")
-            logger.debug("Full error details:", exc_info=True)
+            logger.error(f"{prefix}Backup LLM request failed: {str(e)}")
+            logger.debug(f"{prefix}Full error details:", exc_info=True)
             raise
 
 # Create singleton instance

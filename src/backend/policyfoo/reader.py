@@ -101,16 +101,6 @@ class PolicyReader:
         if current_prompt_key not in seen_messages:
             formatted_messages.append({"role": "user", "content": query})
         
-        # Log the formatted messages
-        truncated_messages = [
-            {
-                "role": msg["role"],
-                "content": truncate_llm_response(msg["content"])
-            }
-            for msg in formatted_messages
-        ]
-        logger.debug(f"Formatted messages: {json.dumps(truncated_messages, indent=2)}")
-        
         return formatted_messages
 
     async def extract_policy_content(
@@ -136,9 +126,10 @@ class PolicyReader:
                 self.PRIMARY_OPTIONS["temperature"] = temperature
                 self.BACKUP_OPTIONS["temperature"] = temperature
             
-            logger.debug(f"Making LLM request for policy {policy_number}")
-            logger.debug(f"Query: {truncate_llm_response(query)}")
-            logger.debug(f"Request ID: {request_id}")
+            if logger.isEnabledFor(10):  # DEBUG level
+                logger.debug(f"[PolicyReader] Making LLM request for policy {policy_number}")
+                logger.debug(f"[PolicyReader] Query: {truncate_llm_response(query)}")
+                logger.debug(f"[PolicyReader] Request ID: {request_id}")
                 
             # Generate response
             response = llm_provider.generate_completion(
@@ -147,14 +138,17 @@ class PolicyReader:
                 messages=messages,  # Pass formatted messages directly
                 primary_options=self.PRIMARY_OPTIONS,
                 backup_options=self.BACKUP_OPTIONS,
-                request_id=request_id
+                request_id=request_id,
+                agent_name="PolicyReader"  # Add agent name to identify messages
             )
             
-            logger.debug(f"LLM response for policy {policy_number}: {truncate_llm_response(response)}")
+            # Only log response at INFO level if it's not empty
+            if response:
+                logger.info(f"[PolicyReader] Policy {policy_number} response: {truncate_llm_response(response)}")
             return response
             
         except Exception as e:
-            logger.error(f"Error extracting policy content: {str(e)}")
+            logger.error(f"[PolicyReader] Error extracting policy content: {str(e)}")
             return None
             
     async def get_policy_content(
