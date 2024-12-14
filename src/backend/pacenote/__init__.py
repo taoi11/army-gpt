@@ -31,6 +31,12 @@ class PaceNoteAgent:
         "num_batch": BACKUP_BATCH
     }
     
+    def __init__(self):
+        # Log initialization
+        logger.debug(f"PaceNoteAgent initialized with models: Primary={self.PRIMARY_MODEL}, Backup={self.BACKUP_MODEL}")
+        logger.debug(f"PaceNoteAgent options: Primary={self.PRIMARY_OPTIONS}, Backup={self.BACKUP_OPTIONS}")
+        logger.info("PaceNoteAgent module initialized successfully")
+    
     @staticmethod
     def parse_competencies(content: str) -> str:
         """Parse competencies from markdown table format"""
@@ -117,9 +123,14 @@ class PaceNoteAgent:
             if not request_id:
                 request_id = str(uuid.uuid4())
             
+            # Debug log only essential info
+            if logger.isEnabledFor(10):  # DEBUG level
+                logger.debug(f"[PaceNoteAgent] Processing request {request_id[:8]}")
+            
             # Load system prompt
             system_prompt = PaceNoteAgent.load_system_prompt()
             if not system_prompt:
+                logger.error("[PaceNoteAgent] Failed to load system prompt")
                 return None
             
             # Generate response using LLM

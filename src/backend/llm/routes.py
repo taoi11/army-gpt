@@ -13,6 +13,10 @@ import os
 
 router = APIRouter(prefix="/llm")
 
+# Initialize agents
+pace_note_agent = PaceNoteAgent()
+logger.info("LLM routes initialized")
+
 class PaceNoteRequest(BaseModel):
     content: str
     temperature: Optional[float] = 0.1

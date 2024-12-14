@@ -3,22 +3,31 @@ class CostDisplay {
     constructor() {
         this.costElement = document.querySelector('.cost-display');
         this.updateCosts();
+        // Update costs every 5 minutes
+        setInterval(() => this.updateCosts(), 5 * 60 * 1000);
     }
 
     async updateCosts() {
         try {
             const response = await fetch('/api/costs');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
             const costs = await response.json();
-            console.log('Costs response:', costs);  // Debug log
+            console.log('Raw costs response:', costs);  // Log raw response
             
             // Update the cost display
             if (this.costElement) {
+                if (costs.error) {
+                    throw new Error(costs.error);
+                }
+                
                 // Ensure we have valid numbers, defaulting to 0.00 if undefined
                 const mainCost = costs.total?.cad || '0.00';
                 const aiCost = costs.api_costs?.cad || '0.00';
-                const serverRentCost = costs.server_rent?.cad || '0.00';  // Changed from cloudCost
+                const serverRentCost = costs.server_rent?.cad || '0.00';
                 
-                console.log('Formatted costs:', { mainCost, aiCost, serverRent: serverRentCost });  // Updated debug log
+                console.log('Formatted costs:', { mainCost, aiCost, serverRent: serverRentCost });
                 
                 this.costElement.innerHTML = `
                     <div class="main-cost">
@@ -44,6 +53,7 @@ class CostDisplay {
             }
         } catch (error) {
             console.error('Error fetching costs:', error);
+            console.error('Error details:', error.message);  // Log error details
             if (this.costElement) {
                 this.costElement.innerHTML = `
                     <div class="main-cost">

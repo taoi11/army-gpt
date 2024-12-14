@@ -74,10 +74,10 @@ class LLMProvider:
                 stream=True
             )
             
-            if logger.isEnabledFor(10):
-                logger.debug(f"{prefix}OpenRouter response status: {response.status_code}")
-                if response.status_code != 200:
-                    logger.debug(f"{prefix}OpenRouter error response: {response.text}")
+            if response.status_code != 200:
+                logger.error(f"{prefix}OpenRouter error: {response.status_code}")
+                if logger.isEnabledFor(10):  # Only log response text in debug mode
+                    logger.debug(f"{prefix}Error response: {response.text}")
             
             response.raise_for_status()
 
@@ -112,7 +112,6 @@ class LLMProvider:
                     
                     # Track cost after streaming is complete
                     if generation_id:
-                        logger.debug(f"{prefix}Tracking cost for generation ID: {generation_id}")
                         await asyncio.sleep(0.5)
                         await cost_tracker.track_api_call(generation_id)
                 except Exception as e:

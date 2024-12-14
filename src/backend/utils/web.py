@@ -37,9 +37,16 @@ api_router = APIRouter(prefix="/api", tags=["api"])
 @api_router.get("/costs")
 async def get_costs():
     """Get current costs for API usage and server rent"""
-    costs = cost_tracker.get_current_costs()
-    logger.debug(f"Returning costs: {costs}")  # Debug log
-    return JSONResponse(content=costs)
+    try:
+        costs = cost_tracker.get_current_costs()
+        logger.debug(f"Returning costs: {costs}")  # Debug log
+        return JSONResponse(content=costs)
+    except Exception as e:
+        logger.error(f"Error getting costs: {str(e)}")
+        return JSONResponse(
+            content={"error": "Internal server error"},
+            status_code=500
+        )
 
 @router.get("/", response_class=HTMLResponse)
 async def root(request: Request):
