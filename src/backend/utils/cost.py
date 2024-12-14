@@ -142,7 +142,10 @@ class CostTracker:
             )
             response.raise_for_status()
             data = response.json()
-            print(f"OpenRouter response: {data}")
+            
+            # Only log full response in debug mode
+            if logger.isEnabledFor(10):  # DEBUG level
+                print(f"OpenRouter response: {data}")
             
             if "data" in data and "total_cost" in data["data"]:
                 # Add the cost to current month's total - store exact value
@@ -155,7 +158,7 @@ class CostTracker:
                 print(f"New total cost: ${self.costs['current_month']['api_costs_usd']:.6f} USD")
                 self._save_costs(self.costs)
             else:
-                print(f"Warning: No cost data found in OpenRouter response: {data}")
+                print(f"Warning: No cost data found in OpenRouter response")
                 
         except Exception as e:
             # Log error but don't fail - cost tracking is non-critical
