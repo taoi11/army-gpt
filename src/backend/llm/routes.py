@@ -49,7 +49,7 @@ async def generate_pace_note(
 
         if request.stream:
             # Generate streaming response
-            stream = PaceNoteAgent.generate(
+            stream = await PaceNoteAgent.generate(
                 content=request.content,
                 temperature=request.temperature,
                 request_id=request_id,
@@ -71,7 +71,7 @@ async def generate_pace_note(
             )
 
         # Non-streaming response
-        note = PaceNoteAgent.generate(
+        note = await PaceNoteAgent.generate(
             content=request.content,
             temperature=request.temperature,
             request_id=request_id,

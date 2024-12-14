@@ -9,18 +9,26 @@ class CostDisplay {
         try {
             const response = await fetch('/api/costs');
             const costs = await response.json();
+            console.log('Costs response:', costs);  // Debug log
             
             // Update the cost display
             if (this.costElement) {
+                // Ensure we have valid numbers, defaulting to 0.00 if undefined
+                const mainCost = costs.total?.cad || '0.00';
+                const aiCost = costs.api_costs?.cad || '0.00';
+                const serverRentCost = costs.server_rent?.cad || '0.00';  // Changed from cloudCost
+                
+                console.log('Formatted costs:', { mainCost, aiCost, serverRent: serverRentCost });  // Updated debug log
+                
                 this.costElement.innerHTML = `
                     <div class="main-cost">
                         <h3 class="text-sm font-semibold text-gray-700">Monthly Cost (CAD)</h3>
-                        <p class="text-lg text-gray-900">$${costs.total_cad}</p>
+                        <p class="text-lg text-gray-900">$${mainCost}</p>
                     </div>
                     <div class="cost-details hidden">
                         <div class="text-xs text-gray-500 mt-1">
-                            <div>AI Costs: $${costs.api_costs.cad}</div>
-                            <div>Cloud Rent: $${costs.server_rent_cad}</div>
+                            <div>AI Costs: $${aiCost}</div>
+                            <div>Server Rent: $${serverRentCost}</div>
                         </div>
                     </div>
                 `;

@@ -110,7 +110,7 @@ class PaceNoteAgent:
             return None
 
     @staticmethod
-    def generate(content: str, temperature: float = 0.1, request_id: str = None, stream: bool = False):
+    async def generate(content: str, temperature: float = 0.1, request_id: str = None, stream: bool = False):
         """Generate a pace note using the LLM"""
         try:
             # Generate request ID if not provided
@@ -134,7 +134,7 @@ class PaceNoteAgent:
             backup_options["temperature"] = temperature
                 
             # Generate note using LLM with tool-specific options
-            response = llm_provider.generate_completion(
+            response = await llm_provider.generate_completion(
                 prompt=content,
                 system_prompt=system_prompt,
                 primary_options=primary_options,
@@ -147,7 +147,7 @@ class PaceNoteAgent:
             if stream:
                 async def stream_response():
                     try:
-                        for chunk in response:
+                        async for chunk in response:
                             yield chunk
                         track_api_call("pace_note_generate", "success")
                     except Exception as e:

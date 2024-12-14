@@ -12,6 +12,7 @@ services:
       - ./data:/data
     env_file:
       - .env
+    user: 1000:100
     # restart: unless-stopped
     # healthcheck:
     #   test: ["CMD", "curl", "-f", "http://localhost:8020/health"]

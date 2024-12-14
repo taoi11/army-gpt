@@ -10,10 +10,10 @@ from typing import Dict, Optional
 DATA_DIR = Path("/data")  # Docker volume mount point
 COST_FILE = DATA_DIR / "costs.json"
 CAD_USD_RATE = 0.70  # 1 CAD = 0.70 USD
-MONTHLY_SERVER_RENT_CAD = 15.75
+MONTHLY_SERVER_RENT_USD = 15.75  # Changed to USD
 
 # OpenRouter API settings
-OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
 
 def ceil_cents(amount: float) -> float:
     """Round up to nearest cent"""
@@ -31,7 +31,7 @@ class CostTracker:
             initial_costs = {
                 "current_month": {
                     "api_costs_usd": 0.0,
-                    "server_rent_cad": MONTHLY_SERVER_RENT_CAD,
+                    "server_rent_usd": MONTHLY_SERVER_RENT_USD,  # Changed to USD
                     "billing_start_date": self._get_current_billing_start().isoformat()
                 },
                 "previous_months": []
@@ -70,7 +70,7 @@ class CostTracker:
                 return {
                     "current_month": {
                         "api_costs_usd": 0.0,
-                        "server_rent_cad": MONTHLY_SERVER_RENT_CAD,
+                        "server_rent_usd": MONTHLY_SERVER_RENT_USD,  # Changed to USD
                         "billing_start_date": self._get_current_billing_start().isoformat()
                     },
                     "previous_months": []
@@ -81,7 +81,7 @@ class CostTracker:
             return {
                 "current_month": {
                     "api_costs_usd": 0.0,
-                    "server_rent_cad": MONTHLY_SERVER_RENT_CAD,
+                    "server_rent_usd": MONTHLY_SERVER_RENT_USD,  # Changed to USD
                     "billing_start_date": self._get_current_billing_start().isoformat()
                 },
                 "previous_months": []
@@ -95,6 +95,7 @@ class CostTracker:
             # Write data
             with open(COST_FILE, 'w') as f:
                 json.dump(costs, f, indent=2)
+            print(f"Saved costs to file. Current total: ${costs['current_month']['api_costs_usd']:.6f} USD")
         except (OSError, IOError) as e:
             print(f"Warning: Could not save cost file: {e}")
             # Continue with in-memory tracking if file operations fail
@@ -122,7 +123,7 @@ class CostTracker:
             self.costs["previous_months"].append(self.costs["current_month"])
             self.costs["current_month"] = {
                 "api_costs_usd": 0.0,
-                "server_rent_cad": MONTHLY_SERVER_RENT_CAD,
+                "server_rent_usd": MONTHLY_SERVER_RENT_USD,  # Changed to USD
                 "billing_start_date": new_start.isoformat()
             }
             self._save_costs(self.costs)
@@ -130,17 +131,29 @@ class CostTracker:
     async def track_api_call(self, generation_id: str) -> None:
         """Track cost of an API call using the generation ID"""
         try:
-            response = requests.get(f"{OPENROUTER_BASE_URL}/generation?id={generation_id}")
+            print(f"Fetching cost for generation ID: {generation_id}")
+            response = requests.get(
+                f"https://openrouter.ai/api/v1/generation?id={generation_id}",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "HTTP-Referer": "https://github.com/taoi11/army-gpt",
+                    "X-Title": "Army-GPT"
+                }
+            )
             response.raise_for_status()
             data = response.json()
+            print(f"OpenRouter response: {data}")
             
             if "data" in data and "total_cost" in data["data"]:
                 # Add the cost to current month's total - store exact value
                 self._check_billing_cycle()
                 cost = float(data["data"]["total_cost"])
+                print(f"Found cost: ${cost:.6f} USD")
+                
+                # Update and save
                 self.costs["current_month"]["api_costs_usd"] += cost
+                print(f"New total cost: ${self.costs['current_month']['api_costs_usd']:.6f} USD")
                 self._save_costs(self.costs)
-                print(f"Tracked API call cost: ${cost:.6f} USD")
             else:
                 print(f"Warning: No cost data found in OpenRouter response: {data}")
                 
@@ -153,22 +166,35 @@ class CostTracker:
         self._check_billing_cycle()
         current = self.costs["current_month"]
         
-        # Convert to CAD and round up API costs only
-        api_costs_cad = current["api_costs_usd"] / CAD_USD_RATE
-        api_costs_cad_rounded = ceil_cents(api_costs_cad)
-        api_costs_usd_rounded = ceil_cents(current["api_costs_usd"])
+        # Get total USD cost (API + server)
+        total_usd = current["api_costs_usd"] + current["server_rent_usd"]
         
-        return {
+        # Convert to CAD
+        total_cad = total_usd / CAD_USD_RATE
+        api_costs_cad = current["api_costs_usd"] / CAD_USD_RATE
+        server_rent_cad = current["server_rent_usd"] / CAD_USD_RATE
+        
+        # Format response
+        response = {
             "api_costs": {
-                "usd": api_costs_usd_rounded,
-                "cad": api_costs_cad_rounded,
+                "usd": ceil_cents(current["api_costs_usd"]),
+                "cad": ceil_cents(api_costs_cad),
                 "usd_exact": round(current["api_costs_usd"], 6),
                 "cad_exact": round(api_costs_cad, 6)
             },
-            "server_rent_cad": current["server_rent_cad"],
-            "total_cad": round(api_costs_cad_rounded + current["server_rent_cad"], 2),
+            "server_rent": {
+                "usd": current["server_rent_usd"],
+                "cad": ceil_cents(server_rent_cad)
+            },
+            "total": {
+                "usd": ceil_cents(total_usd),
+                "cad": ceil_cents(total_cad)
+            },
             "billing_start": current["billing_start_date"]
         }
+        
+        print(f"Cost response: {response}")  # Debug log
+        return response
 
 # Create singleton instance
 cost_tracker = CostTracker() 
