@@ -8,11 +8,10 @@ from src.backend.llm.provider import Message
 import re
 
 async def join_responses(policy_contents: Dict[str, str]) -> str:
-    """Join policy responses while preserving XML structure"""
-    # Combine all policy extracts into one XML structure
-    combined = "<policy_extracts>\n"
+    """Simply join policy responses"""
+    combined = ""
     
-    for policy_number, content in policy_contents.items():
+    for content in policy_contents.values():
         if content:
             # If content is an async generator, get its content
             if hasattr(content, '__aiter__'):
@@ -23,17 +22,11 @@ async def join_responses(policy_contents: Dict[str, str]) -> str:
                             full_content += chunk
                     content = full_content
                 except Exception as e:
-                    logger.error(f"Error reading streaming content for policy {policy_number}: {e}")
+                    logger.error(f"Error reading streaming content: {e}")
                     continue
 
-            # Add policy number as attribute if not in the content
-            if "<policy_number>" not in content:
-                combined += f"<policy_extract policy_number='{policy_number}'>\n{content}\n</policy_extract>\n"
-            else:
-                combined += f"{content}\n"
+            combined += f"\n{content}\n"
     
-    combined += "</policy_extracts>"
-    logger.debug(f"Combined {len(policy_contents)} policy responses")
     return combined
 
 def format_conversation_history(history: List[Dict]) -> List[Message]:

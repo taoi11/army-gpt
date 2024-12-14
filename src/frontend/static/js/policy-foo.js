@@ -259,7 +259,7 @@ async function submitQuestion(question, isResubmission = false) {
         if (citations) {
             const citationsSection = document.createElement('div');
             citationsSection.className = 'citations-section text-sm text-gray-600 mt-2';
-            citationsSection.innerHTML = `<strong>References:</strong><br>${citations}`;
+            citationsSection.innerHTML = `<strong>References:</strong><br>${citations.replace(/\n/g, '<br>')}`;
             formattedContent.appendChild(citationsSection);
         }
 
@@ -288,8 +288,12 @@ async function submitQuestion(question, isResubmission = false) {
 
         const toggleButton = document.createElement('button');
         toggleButton.className = 'toggle-view-btn text-sm text-blue-600 hover:text-blue-800 mt-2';
-        toggleButton.textContent = 'Show formatted view';
+        toggleButton.textContent = 'Show raw response';
         messageContent.insertBefore(toggleButton, formattedContent);
+
+        // Auto-switch to formatted view
+        rawStream.classList.add('hidden');
+        formattedContent.classList.remove('hidden');
 
         toggleButton.addEventListener('click', () => {
             const isRawVisible = !rawStream.classList.contains('hidden');

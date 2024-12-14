@@ -36,40 +36,7 @@ class ChatAgent:
         except Exception as e:
             logger.error(f"Error loading system prompt: {str(e)}")
             return None
-            
-    def _extract_tag_content(self, xml_str: str, tag: str) -> Optional[str]:
-        """Extract content between XML tags using regex"""
-        try:
-            pattern = f"<{tag}>(.*?)</{tag}>"
-            match = re.search(pattern, xml_str, re.DOTALL)
-            return match.group(1).strip() if match else None
-        except Exception as e:
-            logger.error(f"Error extracting {tag} tag: {str(e)}")
-            return None
-            
-    def _format_response(self, llm_response: str) -> str:
-        """Format LLM response into required XML structure"""
-        try:
-            # Extract content from LLM response
-            answer = self._extract_tag_content(llm_response, "answer") or llm_response
-            citations = self._extract_tag_content(llm_response, "citations") or ""
-            follow_up = self._extract_tag_content(llm_response, "follow_up") or ""
-            
-            # Format into clean XML
-            return f"""<response>
-    <answer>{answer}</answer>
-    <citations>{citations}</citations>
-    <follow_up>{follow_up}</follow_up>
-</response>"""
-            
-        except Exception as e:
-            logger.error(f"Error formatting response: {str(e)}")
-            return f"""<response>
-    <answer>{llm_response}</answer>
-    <citations></citations>
-    <follow_up></follow_up>
-</response>"""
-            
+
     async def _format_messages(
         self,
         query: str,
@@ -94,7 +61,7 @@ class ChatAgent:
                     logger.error(f"Error reading policy content stream: {e}")
                     content_str = "Error reading policy content"
 
-            # Replace policy content placeholder
+            # Replace policy content placeholder with raw content
             system_prompt = system_prompt.replace("{{POLICY_DATA}}", content_str)
             formatted_messages.append({
                 "role": "system",
@@ -118,14 +85,6 @@ class ChatAgent:
         
         return formatted_messages
 
-    async def _is_complete_xml(self, text: str) -> bool:
-        """Check if XML response is complete by verifying all tags are closed"""
-        required_tags = ['response', 'answer', 'citations', 'follow_up']
-        for tag in required_tags:
-            if f"<{tag}>" in text and f"</{tag}>" not in text:
-                return False
-        return True
-
     async def generate_response(
         self,
         query: str,
@@ -133,7 +92,7 @@ class ChatAgent:
         request_id: str,
         conversation_history: Optional[List[Message]] = None,
         temperature: Optional[float] = None
-    ) -> Union[str, AsyncGenerator[str, None]]:
+    ) -> AsyncGenerator[str, None]:
         """Generate a response to the user's query"""
         try:
             # Format messages with conversation history
@@ -164,12 +123,12 @@ class ChatAgent:
                 agent_name="ChatAgent"  # Add agent name to identify messages
             )
             
-            # Return response as is - let frontend handle parsing
+            # Return response directly - let frontend handle parsing
             return response
             
         except Exception as e:
             logger.error(f"[ChatAgent] Error generating chat response: {str(e)}")
-            # Return a properly formatted error message
+            # Return error message for frontend to parse
             async def error_generator():
                 yield "<response><answer>I apologize, but I encountered an error while processing your request. Please try again.</answer><citations></citations><follow_up>Try rephrasing your question?</follow_up></response>"
             return error_generator()

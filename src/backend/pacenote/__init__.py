@@ -140,17 +140,10 @@ class PaceNoteAgent:
                 agent_name="PaceNoteAgent"
             )
             
-            # Only track success if we got a response
-            if response:
-                track_api_call("pace_note_generate", "success")
-            else:
-                track_api_call("pace_note_generate", "failed")
-                
             return response
             
         except Exception as e:
             logger.error(f"[PaceNoteAgent] Error generating pace note: {e}")
-            track_api_call("pace_note_generate", "failed")
             return None
 
 # Create singleton instance

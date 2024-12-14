@@ -52,8 +52,7 @@ async def generate_pace_note(
             stream = await PaceNoteAgent.generate(
                 content=request.content,
                 temperature=request.temperature,
-                request_id=request_id,
-                stream=True
+                request_id=request_id
             )
 
             async def stream_generator():
@@ -74,8 +73,7 @@ async def generate_pace_note(
         note = await PaceNoteAgent.generate(
             content=request.content,
             temperature=request.temperature,
-            request_id=request_id,
-            stream=False
+            request_id=request_id
         )
 
         if note is None:
@@ -154,8 +152,7 @@ async def generate_policy_response(
             query=request.content,
             conversation_history=conversation_history,
             request_id=request_id,
-            temperature=request.temperature,
-            parallel=True
+            temperature=request.temperature
         )
         
         if not policy_contents:
