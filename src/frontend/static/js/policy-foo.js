@@ -151,7 +151,11 @@ function addToHistory(role, content) {
 // Function to create a message element
 function createMessageElement(role, content) {
     const messageDiv = document.createElement('div');
-    messageDiv.className = `flex items-start space-x-4 p-4 ${role === 'user' ? 'bg-gray-50' : 'bg-white'}`;
+    messageDiv.className = `message ${role}-message ${role === 'user' ? 'bg-gray-50' : 'bg-white'} rounded-lg shadow-md max-w-3xl mx-auto`;
+
+    // Create the flex container
+    const flexContainer = document.createElement('div');
+    flexContainer.className = 'flex items-start space-x-4 p-4';
 
     // Avatar
     const avatarDiv = document.createElement('div');
@@ -160,14 +164,18 @@ function createMessageElement(role, content) {
     avatarIcon.className = `fas ${role === 'user' ? 'fa-user' : 'fa-robot'} text-gray-400`;
     avatarDiv.appendChild(avatarIcon);
 
-    // Message content
+    // Content container
     const contentDiv = document.createElement('div');
-    contentDiv.className = 'flex-grow space-y-2';
+    contentDiv.className = 'flex-1 min-w-0';
+
+    // Message content div (this is what we'll query for later)
+    const messageContent = document.createElement('div');
+    messageContent.className = 'message-content';
 
     if (role === 'user') {
         // User message with edit controls
         const messageHeader = document.createElement('div');
-        messageHeader.className = 'flex justify-between items-start';
+        messageHeader.className = 'flex justify-between items-start group';
 
         const messageText = document.createElement('p');
         messageText.className = 'message-text text-gray-900';
@@ -189,7 +197,7 @@ function createMessageElement(role, content) {
 
         messageHeader.appendChild(messageText);
         messageHeader.appendChild(actionsDiv);
-        contentDiv.appendChild(messageHeader);
+        messageContent.appendChild(messageHeader);
 
         // Edit container
         const editContainer = document.createElement('div');
@@ -205,33 +213,21 @@ function createMessageElement(role, content) {
                 </button>
             </div>
         `;
-        contentDiv.appendChild(editContainer);
+        messageContent.appendChild(editContainer);
 
-        setupMessageActions(contentDiv, content);
+        setupMessageActions(messageContent, content);
     } else {
-        // Assistant message
-        const messageText = document.createElement('div');
-        messageText.className = 'prose max-w-none';
-        
-        const answer = extractAnswer(content);
-        const citations = extractCitations(content);
-        
-        messageText.innerHTML = `
-            <p class="text-gray-900">${answer}</p>
-            ${citations ? `<div class="text-sm text-gray-600 mt-2"><strong>References:</strong><br>${citations}</div>` : ''}
-        `;
-        
-        contentDiv.appendChild(messageText);
-        
-        // Add follow-up questions if any
-        const followUpQuestions = extractFollowUp(content);
-        if (followUpQuestions.length > 0) {
-            createFollowUpSection(followUpQuestions, contentDiv);
-        }
+        // For assistant messages, we'll just create an empty content div
+        // The sections will be added by the streaming code
+        messageContent.className = 'message-content prose max-w-none';
     }
 
-    messageDiv.appendChild(avatarDiv);
-    messageDiv.appendChild(contentDiv);
+    // Assemble the message element
+    contentDiv.appendChild(messageContent);
+    flexContainer.appendChild(avatarDiv);
+    flexContainer.appendChild(contentDiv);
+    messageDiv.appendChild(flexContainer);
+
     return messageDiv;
 }
 
@@ -252,11 +248,22 @@ async function submitQuestion(question, isResubmission = false) {
             messagesContainer.appendChild(createMessageElement('user', question));
         }
 
+        // Create assistant message element with raw stream display
+        const assistantMessage = createMessageElement('assistant', '');
+        messagesContainer.appendChild(assistantMessage);
+        const messageContent = assistantMessage.querySelector('.message-content');
+        
+        // Create raw stream display
+        const rawStream = document.createElement('div');
+        rawStream.className = 'raw-stream whitespace-pre-wrap font-mono text-sm';
+        messageContent.appendChild(rawStream);
+
         // Make API request
         const response = await fetch('/llm/policyfoo/generate', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Accept': 'text/plain'
             },
             body: JSON.stringify({
                 content: question,
@@ -264,15 +271,113 @@ async function submitQuestion(question, isResubmission = false) {
             })
         });
 
-        const data = await response.json();
-        
-        if (data.content) {
-            // Add assistant message to UI and history
-            addToHistory('assistant', data.content);
-            messagesContainer.appendChild(createMessageElement('assistant', data.content));
-        } else {
-            throw new Error(data.error || 'Failed to get response');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
+
+        // Get response as ReadableStream
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullResponse = '';
+
+        // Process the stream
+        try {
+            while (true) {
+                const {value, done} = await reader.read();
+                
+                if (done) {
+                    console.log('Stream complete');
+                    break;
+                }
+                
+                // Decode the chunk and update displays
+                const chunk = decoder.decode(value, {stream: true});
+                console.log('Received chunk:', chunk);
+                fullResponse += chunk;
+                rawStream.textContent = fullResponse;
+                
+                // Scroll to bottom
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
+        } catch (error) {
+            console.error('Error reading stream:', error);
+            throw error;
+        } finally {
+            // Make sure to decode any remaining chunks
+            const remaining = decoder.decode();
+            if (remaining) {
+                fullResponse += remaining;
+                rawStream.textContent = fullResponse;
+            }
+        }
+
+        // Now that we have the complete response, format it
+        const formattedContent = document.createElement('div');
+        formattedContent.className = 'formatted-content hidden';
+        messageContent.appendChild(formattedContent);
+
+        // Extract and format sections
+        const answer = extractAnswer(fullResponse);
+        const citations = extractCitations(fullResponse);
+        const followUpQuestions = extractFollowUp(fullResponse);
+
+        // Create formatted sections
+        const answerSection = document.createElement('div');
+        answerSection.className = 'answer-section prose max-w-none';
+        answerSection.innerHTML = `<p class="text-gray-900">${answer}</p>`;
+        formattedContent.appendChild(answerSection);
+
+        if (citations) {
+            const citationsSection = document.createElement('div');
+            citationsSection.className = 'citations-section text-sm text-gray-600 mt-2';
+            citationsSection.innerHTML = `<strong>References:</strong><br>${citations}`;
+            formattedContent.appendChild(citationsSection);
+        }
+
+        if (followUpQuestions.length > 0) {
+            const followUpSection = document.createElement('div');
+            followUpSection.className = 'follow-up-section mt-4';
+            followUpSection.innerHTML = '<div class="text-sm text-gray-600"><strong>Follow-up Questions:</strong></div>';
+            
+            const suggestedFollowups = document.createElement('div');
+            suggestedFollowups.className = 'suggested-followups flex flex-wrap gap-2 mt-2';
+            
+            followUpQuestions.forEach(question => {
+                const chip = document.createElement('div');
+                chip.className = 'followup-chip px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition-colors cursor-pointer';
+                chip.textContent = question;
+                chip.addEventListener('click', () => {
+                    textarea.value = question;
+                    textarea.focus();
+                });
+                suggestedFollowups.appendChild(chip);
+            });
+            
+            followUpSection.appendChild(suggestedFollowups);
+            formattedContent.appendChild(followUpSection);
+        }
+
+        // Add toggle button
+        const toggleButton = document.createElement('button');
+        toggleButton.className = 'toggle-view-btn text-sm text-blue-600 hover:text-blue-800 mt-2';
+        toggleButton.textContent = 'Show formatted view';
+        messageContent.insertBefore(toggleButton, formattedContent);
+
+        toggleButton.addEventListener('click', () => {
+            const isRawVisible = !rawStream.classList.contains('hidden');
+            if (isRawVisible) {
+                rawStream.classList.add('hidden');
+                formattedContent.classList.remove('hidden');
+                toggleButton.textContent = 'Show raw response';
+            } else {
+                rawStream.classList.remove('hidden');
+                formattedContent.classList.add('hidden');
+                toggleButton.textContent = 'Show formatted view';
+            }
+        });
+
+        // Add to history
+        addToHistory('assistant', fullResponse);
 
     } catch (error) {
         console.error('Error:', error);

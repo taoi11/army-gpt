@@ -1,32 +1,34 @@
 tool:
   name: pace-notes
   description: An AI tool that generates pace notes for CAF Members
+  status: mostly_stable
 
 frontend:
   interface:
     layout:
       - navigation_bar: top
       - chat_history: none
-      - user_input: text_input
-      - submit_button: send
-      - response_output: text_output
+      - user_input:
+          type: text_input
+          placeholder: "Enter member details and achievements..."
+      - submit_button:
+          type: send
+          streaming: true
+      - response_output:
+          type: text_output
+          format: markdown
       - cleanup_behavior:
           page_leave: silent
           request_cleanup: true
 
 knowledge_base:
   sources:
-    # TODO: Implement rank-based competencies
-    # - type: files
-    #   path: /src/prompts/competencies{rank}.md
-    #   format: markdown table
-    #   usage:
-    #     - dynamically added into LLM system prompt
     - type: files
-      path: /src/policies/pace-note/competency-{{rank}}.md  # for now /policies/pace-note/competency.md
-      format: markdown
+      path: /src/policies/pace-note/competency.md
+      format: markdown table
       usage:
         - dynamically added into LLM system prompt
+        - parsed into structured competency list
     - type: files
       path: /src/policies/pace-note/example_notes.md
       format: markdown
@@ -37,24 +39,45 @@ knowledge_base:
       format: markdown
       usage:
         - main system prompt for the tool
+        - includes competency and example placeholders
+
 endpoints:
   generate:
     path: /llm/pace-notes/generate
     methods: [POST]
     description: Generate pace notes using LLM
     parameters:
-      temperature: 0.1
+      - content: string
+      - temperature:
+          type: float
+          default: 0.1
+          optional: true
+      - stream:
+          type: boolean
+          default: true
+          optional: true
+    response:
+      format: streaming_text
+      error_handling:
+        - rate_limit_exceeded: 429
+        - server_error: 503
+        - invalid_input: 400
 
-  main_LLM_API_parameters:
-    model: PACE_NOTE_MODEL
-    temperature: 0.1
-    stream: false
-  backup_LLM_API_parameters:
-    model: BACKUP_PACE_NOTE_MODEL
-    num_ctx: BACKUP_PACE_NOTE_NUM_CTX
-    batch_size: BACKUP_PACE_NOTE_BATCH_SIZE
-    temperature: 0.1
-    stream: true
+llm_configuration:
+  primary:
+    model: ${PACE_NOTE_MODEL}
+    provider: OpenRouter
+    parameters:
+      temperature: 0.1
+      stream: true
+  backup:
+    model: ${BACKUP_PACE_NOTE_MODEL}
+    provider: Ollama
+    parameters:
+      temperature: 0.1
+      num_ctx: ${BACKUP_PACE_NOTE_NUM_CTX}
+      batch_size: ${BACKUP_PACE_NOTE_BATCH_SIZE}
+      stream: true
 
 state_management:
   type: in_memory
@@ -74,20 +97,62 @@ security:
       - 15 requests per hour
       - 50 requests per day
 
-monitoring and logging:
-  basic_metrics: # open telemetry compatible metrics
-    - No logging of user data
-    - No logging of user messages # unless in debug mode
-    - All logs are in memory only
-    - server_health
-    - Request and general usage
-    - Active users per 15 minute intervals
-    - error_logs
-  logging_strategy:
-    debug_mode:
-      - system_prompt_details: conditional
-      - message_history: conditional
-      - llm_responses: conditional
-    info_mode:
-      - api_call_tracking: always
-      - success_failure: always
+monitoring:
+  metrics:
+    - request_counts
+    - error_rates
+    - latency
+    - token_usage
+    - cost_tracking:
+        provider: OpenRouter
+        interval: per_request
+  logging:
+    privacy_policy:
+      never_logged:
+        - user messages and conversations
+        - personal identifiable information
+        - session data
+        - IP addresses (except for rate limiting)
+    
+    info_mode:  # debug = false (default)
+      description: "Essential operational logging only"
+      always_log:
+        - api_call_tracking:
+            format: "API call [status]"
+            example: "API call tracked: pace_note_generate - success"
+        - error_messages:
+            format: "Error: [error_message]"
+            examples:
+              - "Error loading competencies: [error]"
+              - "Error loading examples: [error]"
+              - "Error loading system prompt: [error]"
+              - "Error in stream generator: [error]"
+              - "Error generating pace note: [error]"
+        - rate_limit_info:
+            format: "Rate limit status update"
+            example: "Rate limit check: 14/15 remaining"
+    
+    debug_mode:  # debug = true (enabled by logger.isEnabledFor(10))
+      description: "Detailed logging for development and troubleshooting"
+      includes_additional:
+        - system_prompt_loading:
+            what: "Details about loaded system prompt components"
+            when: "During prompt preparation"
+            examples:
+              - "System prompt loaded: [length] chars"
+              - "Competency list loaded: [length] chars"
+              - "Examples loaded: [length] chars"
+        - llm_request_details:
+            what: "Message history and request parameters"
+            when: "Before LLM API calls"
+            format: "[PaceNoteAgent] Messages: [truncated_content]"
+        - llm_responses:
+            what: "OpenRouter API responses"
+            when: "After cost tracking calls"
+            format: "OpenRouter response: {id: xxx, total_cost: xxx, ...}"
+        - cost_tracking:
+            what: "Detailed cost information"
+            when: "After each LLM call"
+            examples:
+              - "Found cost: $X.XXXXXX USD"
+              - "New total cost: $XX.XXXXXX USD"

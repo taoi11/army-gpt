@@ -6,13 +6,24 @@ from src.backend.policyfoo.reader import policy_reader
 from src.backend.policyfoo.chat import chat_agent
 from src.backend.llm.provider import Message
 
-def join_responses(policy_contents: Dict[str, str]) -> str:
+async def join_responses(policy_contents: Dict[str, str]) -> str:
     """Join policy responses while preserving XML structure"""
     # Combine all policy extracts into one XML structure
     combined = "<policy_extracts>\n"
     
     for policy_number, content in policy_contents.items():
         if content:
+            # If content is an async generator, get its content
+            if hasattr(content, '__aiter__'):
+                try:
+                    full_content = ""
+                    async for chunk in content:
+                        full_content += chunk
+                    content = full_content
+                except Exception as e:
+                    logger.error(f"Error reading streaming content: {e}")
+                    continue
+
             # Add policy number as attribute if not in the content
             if "<policy_number>" not in content:
                 combined += f"<policy_extract policy_number='{policy_number}'>\n{content}\n</policy_extract>\n"
@@ -98,7 +109,7 @@ async def generate():
         
         # Step 3: Join policy contents
         logger.debug("Joining policy contents")
-        combined_content = join_responses(policy_contents)
+        combined_content = await join_responses(policy_contents)
         logger.debug(f"Combined content: {truncate_llm_response(combined_content)}")
         
         # Step 4: Generate chat response
@@ -109,6 +120,17 @@ async def generate():
             conversation_history=conversation_history,
             request_id=request_id
         )
+        
+        # If response is an async generator, convert it to a string
+        if hasattr(response, '__aiter__'):
+            try:
+                full_response = ""
+                async for chunk in response:
+                    full_response += chunk
+                response = full_response
+            except Exception as e:
+                logger.error(f"Error reading streaming response: {e}")
+                response = "<response><answer>Error processing streaming response</answer><citations></citations><follow_up></follow_up></response>"
         
         logger.debug(f"Final response: {truncate_llm_response(response)}")
         return jsonify({

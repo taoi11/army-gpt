@@ -4,6 +4,7 @@ from src.backend.utils.logger import logger, truncate_llm_response
 from src.backend.llm.provider import llm_provider, Message
 import uuid
 import json
+import re
 
 class PolicyFinder:
     """Agent for identifying relevant DOAD policies based on user queries"""
@@ -12,8 +13,8 @@ class PolicyFinder:
         # Load model settings from environment
         self.PRIMARY_MODEL = os.getenv("POLICY_FINDER_MODEL")
         self.BACKUP_MODEL = os.getenv("BACKUP_POLICY_FINDER_MODEL")
-        self.BACKUP_CTX = int(os.getenv("BACKUP_POLICY_FINDER_NUM_CTX", "1000"))
-        self.BACKUP_BATCH = int(os.getenv("BACKUP_POLICY_FINDER_BATCH_SIZE", "128"))
+        self.BACKUP_CTX = int(os.getenv("BACKUP_POLICY_FINDER_NUM_CTX"))
+        self.BACKUP_BATCH = int(os.getenv("BACKUP_POLICY_FINDER_BATCH_SIZE"))
         
         # Log model settings
         logger.debug(f"PolicyFinder initialized with models: Primary={self.PRIMARY_MODEL}, Backup={self.BACKUP_MODEL}")
@@ -21,14 +22,16 @@ class PolicyFinder:
         # LLM settings
         self.PRIMARY_OPTIONS = {
             "temperature": 0.1,
-            "model": self.PRIMARY_MODEL
+            "model": self.PRIMARY_MODEL,
+            "stream": True
         }
         
         self.BACKUP_OPTIONS = {
             "temperature": 0.1,
             "model": self.BACKUP_MODEL,
             "num_ctx": self.BACKUP_CTX,
-            "num_batch": self.BACKUP_BATCH
+            "num_batch": self.BACKUP_BATCH,
+            "stream": True
         }
         
         # Log options
@@ -123,7 +126,7 @@ class PolicyFinder:
             user_message = next((msg["content"] for msg in messages if msg["role"] == "user"), query)
             
             # Generate policy list using LLM
-            response = llm_provider.generate_completion(
+            response = await llm_provider.generate_completion(
                 prompt=user_message,  # Use the formatted user message
                 system_prompt=messages[0]["content"] if messages else "",  # Use the system prompt from messages
                 messages=messages,  # Pass formatted messages directly
@@ -132,6 +135,14 @@ class PolicyFinder:
                 request_id=request_id,
                 agent_name="PolicyFinder"  # Add agent name to identify messages
             )
+            
+            # Handle streaming response
+            if hasattr(response, '__aiter__'):
+                full_response = ''
+                async for chunk in response:
+                    if chunk:
+                        full_response += chunk
+                response = full_response
             
             if logger.isEnabledFor(10):  # DEBUG level
                 logger.debug(f"[PolicyFinder] LLM response: {truncate_llm_response(response)}")
@@ -145,22 +156,28 @@ class PolicyFinder:
                 return []
                 
             # Split response and clean policy numbers
-            policies = [
-                policy.strip()
-                for policy in response.split(",")
-                if policy.strip()
-            ]
+            # First, try to extract policy numbers using a more strict pattern
+            policy_numbers = re.findall(r'\b\d{4}-\d+\b', response)
+            
+            # If no policy numbers found with strict pattern, fall back to comma split
+            if not policy_numbers:
+                policies = [
+                    policy.strip()
+                    for policy in response.split(",")
+                    if policy.strip() and re.match(r'\d{4}-\d+', policy.strip())
+                ]
+                policy_numbers = policies
             
             # If no policies found but we have context, try again without context
-            if not policies and conversation_history:
+            if not policy_numbers and conversation_history:
                 logger.debug("[PolicyFinder] No policies found with context, trying without context")
                 return await self.find_relevant_policies(query=query, request_id=request_id)
             
             # Always log found policies at INFO level
-            if policies:
-                logger.info(f"[PolicyFinder] Found {len(policies)} relevant policies: {policies}")
+            if policy_numbers:
+                logger.info(f"[PolicyFinder] Found {len(policy_numbers)} relevant policies: {policy_numbers}")
             
-            return policies
+            return policy_numbers
             
         except Exception as e:
             logger.error(f"[PolicyFinder] Error finding relevant policies: {str(e)}")

@@ -1,6 +1,7 @@
 tool:
   name: policy-foo
   description: Multi-agent system for policy search, analysis and answering user queries
+  status: proof_of_concept
 
 frontend:
   interface:
@@ -9,18 +10,33 @@ frontend:
       - conversation_panel:
           width: 75%
           components:
+            - rate_limit_display:
+                position: top-right
+                style: floating
+                fields:
+                  - hourly_remaining
+                  - daily_remaining
             - chat_history:
                 retention: session
+                max_messages: 10
                 display:
-                  - user_messages
-                  - ai_responses
-                  - policy_references:
-                      style: subsection of the LLM response box
+                  - user_messages:
+                      actions: [edit, resubmit]
+                      style: bg-gray-50
+                  - ai_responses:
+                      style: bg-white
+                      sections:
+                        - answer
+                        - citations
+                        - follow_up
             - input_area:
                 type: expandable_textarea
                 placeholder: "Ask about CAF policies..."
+                auto_resize: true
             - submit_button:
                 type: streaming_disabled
+                icon: paper-plane
+                label: Send
 
 backend:
   agents:
@@ -30,10 +46,11 @@ backend:
       input:
         - systemPrompt: policyFinder.md + DOAD-list-table.md
         - userPrompt: user query
-        - conversation_history: last_5_exchanges # make use of the assistant and user roles in the LLM API
+        - conversation_history: last_5_exchanges
       output:
         format: comma-separated-string
         validation: Simple parsing of the policy numbers
+        max_policies: 5
       logging:
         prefix: "[PolicyFinder]"
         debug_mode:
@@ -44,13 +61,13 @@ backend:
       main_LLM_API_parameters:
         model: POLICY_FINDER_MODEL
         temperature: 0.1
-        stream: false
+        stream: true
       backup_LLM_API_parameters:
         model: BACKUP_POLICY_FINDER_MODEL
         num_ctx: BACKUP_POLICY_FINDER_NUM_CTX
         batch_size: BACKUP_POLICY_FINDER_BATCH_SIZE
         temperature: 0.1
-        stream: false
+        stream: true
         execution:
           type: sequential
           timeout: 60s
@@ -61,10 +78,14 @@ backend:
       input:
         - systemPrompt: policyReader.md + {{policy_number}}.md
         - userPrompt: user query
-        - conversation_history: last_5_exchanges # make use of the assistant and user roles in the LLM API
+        - conversation_history: last_5_exchanges
       output:
-        format: structured_text
-        validation: none # just send the response string to chatAgent as is
+        format: xml
+        sections:
+          - policy_number
+          - section
+          - content
+        validation: none
       logging:
         prefix: "[PolicyReader]"
         debug_mode:
@@ -74,37 +95,38 @@ backend:
         info_mode:
           - found_policies: always
       knowledge_base:
-        - /policies/doad/{{policy_number}}.md # /policies/doad/1000-1.md
+        - /policies/doad/{{policy_number}}.md
       main_LLM_API_parameters:
         model: POLICY_READER_MODEL
         temperature: 0.1
+        stream: true
         execution:
           type: parallel
           stagger: 250ms
-          timeout: 5s
+          timeout: 35s
       backup_LLM_API_parameters:
         model: BACKUP_POLICY_READER_MODEL
         num_ctx: BACKUP_POLICY_READER_NUM_CTX
         batch_size: BACKUP_POLICY_READER_BATCH_SIZE
         temperature: 0.1
-        stream: false
+        stream: true
         execution:
           type: sequential
           timeout: 60s 
+
     chatAgent:
-      model: CHAT_AGENT_MODEL
       role: user-interaction
       system_prompt: /prompts/chatAgent.md
       input:
         - systemPrompt: chatAgent.md + {{policy_extracts}}
         - userPrompt: user query
-        - conversation_history: last_5_exchanges # make use of the assistant and user roles in the LLM API
+        - conversation_history: last_5_exchanges
       output:
-        format: structured_response
-        xml_sections:
-          - formatted_answer
-          - policy_references
-          - suggested_followups # "DOAD XX.XX: Sections X.X, X.X"
+        format: xml
+        sections:
+          - answer
+          - citations
+          - follow_up
       logging:
         prefix: "[ChatAgent]"
         debug_mode:
@@ -114,7 +136,7 @@ backend:
       main_LLM_API_parameters:
         model: CHAT_AGENT_MODEL
         temperature: 0.1
-        stream: false
+        stream: true
       backup_LLM_API_parameters:
         model: BACKUP_CHAT_AGENT_MODEL
         num_ctx: BACKUP_CHAT_AGENT_NUM_CTX
@@ -127,74 +149,83 @@ backend:
         methods: [POST]
         parameters:
           - content: string
+          - conversation_history: array
           - temperature: float = 0.1
-          - stream: bool = false
+          - stream: bool = true
         response:
-          format: json
+          format: text/plain
           fields:
-            - formatted_answer: string
-            - policy_references: string[]
-            - suggested_followups: string[]
+            - content: string
+            - remaining_requests:
+                hourly_remaining: int
+                daily_remaining: int
 
 workflow_manager:
   orchestration:
     - initialize:
         action: receive_query
         handler: fastapi_endpoint
-        endpoint: /api/v1/policy-foo/query
+        endpoint: /llm/policyfoo/generate
         method: POST
         validation:
           - rate_limiting
-          - input_sanitization
     
     - find_policies:
         action: policy_identification
         handler: policyFinder
         error_handling:
-          retry_count: 2
-          fallback: cached_common_policies
+          retry_count: 1
+          fallback: empty_list
     
     - read_policies:
         action: parallel_extraction
         handler: policyReader
-        optimization:
-          caching:
-            ttl: 1h
-            key_pattern: "policy:{id}:query:{hash}"
-    
-    - synthesize:
-        action: combine_extracts
-        handler: python_function
-        method: weighted_relevance_merge
+        timeout: 35.0
+        stagger_delay: 0.25
     
     - generate_response:
         action: create_response
         handler: chatAgent
-        features:
-          - streaming_enabled
-          - reference_annotation
+        format: xml
+        sections:
+          - answer
+          - citations
+          - follow_up
     
     - finish:
         action: update_session
         handler: session_manager
         operations:
           - update_history
-          - cache_references
-          - log_metrics
+          - update_rate_limits
 
 state_management:
   session:
-    storage: redis
-    ttl: 24h
-    structure:
-      conversation_history:
-        max_length: 10
-        pruning: fifo
-      policy_references:
-        format: ordered_set
-        max_size: 50
+    storage: in_memory
+    conversation_history:
+      max_length: 10
+      structure:
+        - role: string
+        - content: string
+      pruning: fifo
 
 monitoring:
+  logging:
+    privacy:
+      never_logged:
+        - user_messages
+        - personal_info
+        - session_data
+    debug_mode:
+      enabled_by: logger.isEnabledFor(10)
+      includes:
+        - llm_responses
+        - message_history
+        - request_details
+    info_mode:
+      always_log:
+        - found_policies
+        - api_call_status
   metrics:
     - agent_performance:
         - latency
@@ -209,14 +240,3 @@ monitoring:
     - error_tracking:
         - agent_failures
         - workflow_breaks
-
-security:
-  rate_limiting:
-    inherit: true  # Inherits from main app config
-  data_handling:
-    user_data:
-      storage: none
-      logging: disabled
-    policy_data:
-      storage: cached
-      encryption: at_rest

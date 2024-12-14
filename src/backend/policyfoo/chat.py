@@ -1,6 +1,6 @@
 import os
 import re
-from typing import Optional, Dict, Union, Generator, List
+from typing import Optional, Dict, Union, Generator, List, AsyncGenerator
 from src.backend.utils.logger import logger, truncate_llm_response
 from src.backend.llm.provider import llm_provider, Message
 import uuid
@@ -11,15 +11,17 @@ class ChatAgent:
     
     def __init__(self):
         self.PRIMARY_OPTIONS = {
-            "model": os.getenv("CHAT_AGENT_MODEL", "gpt-3.5-turbo"),
+            "model": os.getenv("CHAT_AGENT_MODEL"),
             "temperature": 0.1,
-            "stream": False
+            "stream": True
         }
         
         self.BACKUP_OPTIONS = {
-            "model": os.getenv("BACKUP_CHAT_AGENT_MODEL", "mistral"),
+            "model": os.getenv("BACKUP_CHAT_AGENT_MODEL"),
             "temperature": 0.1,
-            "stream": False
+            "stream": True,
+            "num_ctx": int(os.getenv("BACKUP_CHAT_AGENT_NUM_CTX")),
+            "num_batch": int(os.getenv("BACKUP_CHAT_AGENT_BATCH_SIZE"))
         }
         
     def load_system_prompt(self) -> Optional[str]:
@@ -70,7 +72,7 @@ class ChatAgent:
     <follow_up></follow_up>
 </response>"""
             
-    def _format_messages(
+    async def _format_messages(
         self,
         query: str,
         policy_content: str,
@@ -83,8 +85,19 @@ class ChatAgent:
         # Load and prepare system prompt first
         system_prompt = self.load_system_prompt()
         if system_prompt:
+            # Handle policy content if it's an async generator
+            content_str = policy_content
+            if hasattr(policy_content, '__aiter__'):
+                try:
+                    content_str = ""
+                    async for chunk in policy_content:
+                        content_str += chunk
+                except Exception as e:
+                    logger.error(f"Error reading policy content stream: {e}")
+                    content_str = "Error reading policy content"
+
             # Replace policy content placeholder
-            system_prompt = system_prompt.replace("{{POLICY_CONTENT}}", policy_content)
+            system_prompt = system_prompt.replace("{{POLICY_CONTENT}}", content_str)
             formatted_messages.append({
                 "role": "system",
                 "content": system_prompt
@@ -107,6 +120,14 @@ class ChatAgent:
         
         return formatted_messages
 
+    async def _is_complete_xml(self, text: str) -> bool:
+        """Check if XML response is complete by verifying all tags are closed"""
+        required_tags = ['response', 'answer', 'citations', 'follow_up']
+        for tag in required_tags:
+            if f"<{tag}>" in text and f"</{tag}>" not in text:
+                return False
+        return True
+
     async def generate_response(
         self,
         query: str,
@@ -114,16 +135,20 @@ class ChatAgent:
         request_id: str,
         conversation_history: Optional[List[Message]] = None,
         temperature: Optional[float] = None
-    ) -> Optional[str]:
+    ) -> Union[str, AsyncGenerator[str, None]]:
         """Generate a response to the user's query"""
         try:
             # Format messages with conversation history
-            messages = self._format_messages(query, policy_content, conversation_history)
+            messages = await self._format_messages(query, policy_content, conversation_history)
+            
+            # Create copies of options to avoid modifying class-level dictionaries
+            primary_options = self.PRIMARY_OPTIONS.copy()
+            backup_options = self.BACKUP_OPTIONS.copy()
             
             # Override temperature if provided
             if temperature is not None:
-                self.PRIMARY_OPTIONS["temperature"] = temperature
-                self.BACKUP_OPTIONS["temperature"] = temperature
+                primary_options["temperature"] = temperature
+                backup_options["temperature"] = temperature
             
             if logger.isEnabledFor(10):  # DEBUG level
                 logger.debug(f"[ChatAgent] Making LLM request for chat response")
@@ -131,23 +156,26 @@ class ChatAgent:
                 logger.debug(f"[ChatAgent] Request ID: {request_id}")
                 
             # Generate response
-            response = llm_provider.generate_completion(
+            response = await llm_provider.generate_completion(
                 prompt=query,  # Pass original query
                 system_prompt=messages[0]["content"] if messages else "",  # Use the system prompt from messages
                 messages=messages,  # Pass formatted messages directly
-                primary_options=self.PRIMARY_OPTIONS,
-                backup_options=self.BACKUP_OPTIONS,
+                primary_options=primary_options,
+                backup_options=backup_options,
                 request_id=request_id,
+                stream=True,  # Always stream
                 agent_name="ChatAgent"  # Add agent name to identify messages
             )
             
-            if logger.isEnabledFor(10):  # DEBUG level
-                logger.debug(f"[ChatAgent] LLM response: {truncate_llm_response(response)}")
+            # Return response as is - let frontend handle parsing
             return response
             
         except Exception as e:
             logger.error(f"[ChatAgent] Error generating chat response: {str(e)}")
-            return None
+            # Return a properly formatted error message
+            async def error_generator():
+                yield "<response><answer>I apologize, but I encountered an error while processing your request. Please try again.</answer><citations></citations><follow_up>Try rephrasing your question?</follow_up></response>"
+            return error_generator()
 
 # Create singleton instance
 chat_agent = ChatAgent() 

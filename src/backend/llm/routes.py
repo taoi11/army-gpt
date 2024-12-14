@@ -141,15 +141,11 @@ async def generate_policy_response(
         
         if not policy_refs:
             logger.warning("No relevant policies found")
-            return JSONResponse(
-                content={
-                    "content": "<response><answer>I couldn't find any relevant policies for your query. Could you please rephrase or provide more details?</answer><citations></citations><follow_up>Try asking about a specific policy area?</follow_up></response>",
-                    "remaining_requests": remaining
-                },
-                headers={
-                    "X-RateLimit-Remaining-Hour": str(remaining["hourly_remaining"]),
-                    "X-RateLimit-Remaining-Day": str(remaining["daily_remaining"])
-                }
+            return StreamingResponse(
+                iter([
+                    "<response><answer>I couldn't find any relevant policies for your query. Could you please rephrase or provide more details?</answer><citations></citations><follow_up>Try asking about a specific policy area?</follow_up></response>"
+                ]),
+                media_type="text/plain"
             )
         
         # Step 2: Get policy content with parallel processing
@@ -164,15 +160,11 @@ async def generate_policy_response(
         
         if not policy_contents:
             logger.warning("Failed to extract policy content")
-            return JSONResponse(
-                content={
-                    "content": "<response><answer>I found some relevant policies but couldn't extract their content. Please try again.</answer><citations></citations><follow_up>Maybe try rephrasing your question?</follow_up></response>",
-                    "remaining_requests": remaining
-                },
-                headers={
-                    "X-RateLimit-Remaining-Hour": str(remaining["hourly_remaining"]),
-                    "X-RateLimit-Remaining-Day": str(remaining["daily_remaining"])
-                }
+            return StreamingResponse(
+                iter([
+                    "<response><answer>I found some relevant policies but couldn't extract their content. Please try again.</answer><citations></citations><follow_up>Maybe try rephrasing your question?</follow_up></response>"
+                ]),
+                media_type="text/plain"
             )
         
         # Step 3: Generate chat response using first policy content
@@ -184,34 +176,25 @@ async def generate_policy_response(
             request_id=request_id,
             temperature=request.temperature
         )
+
+        # If response is an async iterator (streaming), return it directly
+        if hasattr(response, '__aiter__'):
+            return StreamingResponse(
+                response,
+                media_type="text/plain"
+            )
         
-        # Only check rate limits if we got a successful response and using OpenRouter
-        if credits_checker.has_credits and response and not isinstance(response, str):
-            # is_allowed() will add the request if allowed
-            if not rate_limiter.is_allowed(client_ip, request_id):
-                raise HTTPException(
-                    status_code=429,
-                    detail="Rate limit exceeded"
-                )
-            remaining = rate_limiter.get_remaining(client_ip)
-        
-        return JSONResponse(
-            content={
-                "content": response if response else "<response><answer>Sorry, I encountered an error processing your request. Please try again.</answer><citations></citations><follow_up></follow_up></response>",
-                "remaining_requests": remaining
-            },
-            headers={
-                "X-RateLimit-Remaining-Hour": str(remaining["hourly_remaining"]),
-                "X-RateLimit-Remaining-Day": str(remaining["daily_remaining"])
-            }
+        # If it's a regular response, convert it to a streaming response
+        return StreamingResponse(
+            iter([response]),
+            media_type="text/plain"
         )
-        
+
     except Exception as e:
-        logger.error(f"Error in generate endpoint: {str(e)}")
-        return JSONResponse(
-            content={
-                "content": f"<response><answer>An error occurred: {str(e)}</answer><citations></citations><follow_up></follow_up></response>",
-                "remaining_requests": {"hourly_remaining": 0, "daily_remaining": 0}
-            },
-            status_code=500
+        logger.error(f"Error in generate_policy_response: {str(e)}")
+        return StreamingResponse(
+            iter([
+                "<response><answer>An error occurred while processing your request. Please try again.</answer><citations></citations><follow_up>Try asking a different question?</follow_up></response>"
+            ]),
+            media_type="text/plain"
         )

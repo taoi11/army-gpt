@@ -11,20 +11,24 @@ class PolicyReader:
     
     def __init__(self):
         self.PRIMARY_OPTIONS = {
-            "model": os.getenv("POLICY_READER_MODEL", "gpt-3.5-turbo"),
+            "model": os.getenv("POLICY_READER_MODEL"),
             "temperature": 0.1,
-            "stream": False
+            "stream": True,
+            "parallel": True  # Primary LLM can handle parallel requests
         }
         
         self.BACKUP_OPTIONS = {
-            "model": os.getenv("BACKUP_POLICY_READER_MODEL", "mistral"),
+            "model": os.getenv("BACKUP_POLICY_READER_MODEL"),
             "temperature": 0.1,
-            "stream": False
+            "stream": True,
+            "parallel": False,  # Backup LLM should process sequentially
+            "num_ctx": int(os.getenv("BACKUP_POLICY_READER_NUM_CTX")),
+            "num_batch": int(os.getenv("BACKUP_POLICY_READER_BATCH_SIZE"))
         }
         
         # Parallel execution settings
         self.STAGGER_DELAY = 0.25  # 250ms between parallel requests
-        self.TIMEOUT = 35.0  # 35s timeout for parallel execution (slightly longer than primary LLM timeout)
+        self.TIMEOUT = 35.0  # 35s timeout for parallel execution
         
         logger.debug(f"PolicyReader initialized with options: Primary={self.PRIMARY_OPTIONS}, Backup={self.BACKUP_OPTIONS}")
         
@@ -121,10 +125,14 @@ class PolicyReader:
             # Format messages with conversation history
             messages = self._format_messages(query, policy_content, conversation_history)
             
+            # Create copies of options to avoid modifying class-level dictionaries
+            primary_options = self.PRIMARY_OPTIONS.copy()
+            backup_options = self.BACKUP_OPTIONS.copy()
+            
             # Override temperature if provided
             if temperature is not None:
-                self.PRIMARY_OPTIONS["temperature"] = temperature
-                self.BACKUP_OPTIONS["temperature"] = temperature
+                primary_options["temperature"] = temperature
+                backup_options["temperature"] = temperature
             
             if logger.isEnabledFor(10):  # DEBUG level
                 logger.debug(f"[PolicyReader] Making LLM request for policy {policy_number}")
@@ -132,12 +140,12 @@ class PolicyReader:
                 logger.debug(f"[PolicyReader] Request ID: {request_id}")
                 
             # Generate response
-            response = llm_provider.generate_completion(
+            response = await llm_provider.generate_completion(
                 prompt=query,  # Pass original query
                 system_prompt=messages[0]["content"] if messages else "",  # Use the system prompt from messages
                 messages=messages,  # Pass formatted messages directly
-                primary_options=self.PRIMARY_OPTIONS,
-                backup_options=self.BACKUP_OPTIONS,
+                primary_options=primary_options,
+                backup_options=backup_options,
                 request_id=request_id,
                 agent_name="PolicyReader"  # Add agent name to identify messages
             )
@@ -158,7 +166,7 @@ class PolicyReader:
         request_id: Optional[str] = None,
         conversation_history: Optional[List[Message]] = None,
         temperature: Optional[float] = None,
-        parallel: bool = True
+        parallel: bool = True  # This will be overridden by options
     ) -> Dict[str, str]:
         """Get content from multiple policies with parallel or sequential processing"""
         try:
@@ -166,51 +174,92 @@ class PolicyReader:
             if not request_id:
                 request_id = str(uuid.uuid4())
                 
-            # Create tasks for each policy
-            tasks = []
-            for i, policy_number in enumerate(policy_numbers):
-                task = self.extract_policy_content(
-                    policy_number=policy_number,
-                    query=query,
-                    request_id=f"{request_id}-{policy_number}",
-                    conversation_history=conversation_history,  # Pass conversation history
-                    temperature=temperature
-                )
-                
-                if parallel:
-                    # Add stagger delay for parallel execution
+            results = {}
+            if not policy_numbers:
+                return results
+
+            # Create copies of options
+            primary_options = self.PRIMARY_OPTIONS.copy()
+            backup_options = self.BACKUP_OPTIONS.copy()
+            
+            # Override temperature if provided
+            if temperature is not None:
+                primary_options["temperature"] = temperature
+                backup_options["temperature"] = temperature
+
+            # Try first policy to determine which options we're using
+            first_result = await self.extract_policy_content(
+                policy_number=policy_numbers[0],
+                query=query,
+                request_id=f"{request_id}-{policy_numbers[0]}",
+                conversation_history=conversation_history,
+                temperature=temperature
+            )
+            
+            # Store first result if valid
+            if first_result is not None:
+                results[policy_numbers[0]] = first_result
+
+            # Get the options being used (based on whether primary LLM succeeded)
+            current_options = primary_options if first_result is not None else backup_options
+            use_parallel = current_options.get("parallel", False)
+            
+            # Process remaining policies
+            remaining_policies = policy_numbers[1:]
+            if not remaining_policies:
+                return results
+
+            if use_parallel:
+                logger.debug("[PolicyReader] Using parallel processing")
+                # Create tasks for remaining policies
+                tasks = []
+                for i, policy_number in enumerate(remaining_policies):
                     await asyncio.sleep(self.STAGGER_DELAY * i)
-                    tasks.append(asyncio.create_task(task))
-                else:
-                    # Sequential execution
-                    result = await task
-                    if result:
-                        tasks.append(result)
-                        
-            if parallel:
+                    task = asyncio.create_task(self.extract_policy_content(
+                        policy_number=policy_number,
+                        query=query,
+                        request_id=f"{request_id}-{policy_number}",
+                        conversation_history=conversation_history,
+                        temperature=temperature
+                    ))
+                    tasks.append((policy_number, task))
+                
                 # Wait for all tasks with timeout
                 try:
                     async with asyncio.timeout(self.TIMEOUT):
-                        results = await asyncio.gather(*tasks)
-                    return {
-                        policy_number: result 
-                        for policy_number, result in zip(policy_numbers, results)
-                        if result is not None
-                    }
+                        for policy_number, task in tasks:
+                            try:
+                                result = await task
+                                if result is not None:
+                                    results[policy_number] = result
+                            except Exception as e:
+                                logger.error(f"Error processing policy {policy_number}: {e}")
+                                continue
                 except asyncio.TimeoutError:
                     logger.error("Parallel policy extraction timed out")
                     # Cancel any remaining tasks
-                    for task in tasks:
+                    for _, task in tasks:
                         if not task.done():
                             task.cancel()
-                    return {}
             else:
-                # Return sequential results
-                return {
-                    policy_number: result
-                    for policy_number, result in zip(policy_numbers, tasks)
-                    if result is not None
-                }
+                logger.debug("[PolicyReader] Using sequential processing")
+                # Sequential execution
+                for policy_number in remaining_policies:
+                    try:
+                        result = await self.extract_policy_content(
+                            policy_number=policy_number,
+                            query=query,
+                            request_id=f"{request_id}-{policy_number}",
+                            conversation_history=conversation_history,
+                            temperature=temperature
+                        )
+                        if result is not None:
+                            results[policy_number] = result
+                    except Exception as e:
+                        logger.error(f"Error processing policy {policy_number}: {e}")
+                        continue
+            
+            return results
                 
         except Exception as e:
             logger.error(f"Error getting policy content: {str(e)}")

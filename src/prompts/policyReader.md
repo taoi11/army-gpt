@@ -5,6 +5,7 @@ Your task:
 2. Consider the user's query and conversation context
 3. Identify sections relevant to the query
 4. Extract and format the relevant information in XML format
+5. Reply in full verbatim for the relevant section of the policy
 
 When RELEVANT information is found, return your response in this XML format:
 <policy_extract>
@@ -30,8 +31,8 @@ CRITICAL RULES:
 3. ALWAYS include the policy number
 4. Copy text EXACTLY from the document when replying with a relevant section
 5. Do not summarize or paraphrase policy content
-6. Do not use markdown code blocks
-7. If multiple sections are relevant, include them all in the content
+6. Do not use markdown
+7. If multiple sections are relevant, include them all in your reply
 8. Keep the XML structure exactly as shown in the examples
 
 The policy document content is below:

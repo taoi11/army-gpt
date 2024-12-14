@@ -89,7 +89,10 @@ class LLMProvider:
                         for line in response.iter_lines():
                             if line:
                                 try:
-                                    data = json.loads(line.decode('utf-8').removeprefix('data: '))
+                                    line_str = line.decode('utf-8')
+                                    if line_str.startswith('data: '):
+                                        line_str = line_str[6:]  # Remove 'data: ' prefix
+                                    data = json.loads(line_str)
                                     if "choices" in data and len(data["choices"]) > 0:
                                         content = data["choices"][0]["delta"].get("content", "")
                                         if content:
@@ -276,23 +279,26 @@ class LLMProvider:
             logger.debug(f"{prefix}Options: {options}")
         
         try:
-            # Format request according to Ollama API
+            # Only use parameters defined in .env
             request_data = {
                 "model": model,
                 "messages": messages,
-                "stream": stream,
-                "options": {
-                    "temperature": options.get("temperature", 0.1),
-                    "num_ctx": options.get("num_ctx", 2048),
-                    "num_predict": options.get("num_batch", 128)
-                }
+                "stream": True  # Always stream for consistent handling
             }
-            
+
+            # Only add options if they're defined in .env
+            if "num_ctx" in options or "num_batch" in options:
+                request_data["options"] = {}
+                if "num_ctx" in options:
+                    request_data["options"]["num_ctx"] = options["num_ctx"]
+                if "num_batch" in options:
+                    request_data["options"]["num_batch"] = options["num_batch"]
+
             response = requests.post(
                 f"{self.backup_base_url}/api/chat",
                 json=request_data,
                 timeout=self.backup_timeout,
-                stream=stream  # Enable HTTP streaming
+                stream=True  # Always stream for consistent handling
             )
             
             # Log response details only in debug mode
@@ -302,35 +308,25 @@ class LLMProvider:
             
             response.raise_for_status()
             
-            if stream:
-                async def generate():
-                    try:
-                        for line in response.iter_lines():
-                            if line:
-                                try:
-                                    data = json.loads(line.decode('utf-8'))
-                                    if "message" in data and "content" in data["message"]:
-                                        yield data["message"]["content"]
-                                except json.JSONDecodeError:
-                                    continue
-                    except Exception as e:
-                        logger.error(f"{prefix}Error in stream processing: {e}")
-                        raise
-                
-                return generate()
-            else:
-                result = response.json()
-                
-                # Log response only in debug mode
-                if logger.isEnabledFor(10):  # DEBUG level
-                    logger.debug(f"{prefix}Response: {truncate_llm_response(result)}")
-                
-                if "message" in result:
-                    return result["message"]["content"]
-                
-                logger.error(f"{prefix}Unexpected Ollama response format: {result}")
-                raise ValueError("Unexpected response format from backup LLM")
+            async def generate():
+                try:
+                    for line in response.iter_lines():
+                        if line:
+                            try:
+                                line_str = line.decode('utf-8')
+                                data = json.loads(line_str)
+                                if "message" in data and "content" in data["message"]:
+                                    content = data["message"]["content"]
+                                    if content:
+                                        yield content
+                            except json.JSONDecodeError:
+                                continue
+                except Exception as e:
+                    logger.error(f"{prefix}Error in stream processing: {e}")
+                    raise
             
+            return generate()
+
         except requests.exceptions.RequestException as e:
             logger.error(f"{prefix}Backup LLM request failed: {str(e)}")
             logger.debug(f"{prefix}Full error details:", exc_info=True)
