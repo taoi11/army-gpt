@@ -91,3 +91,34 @@ const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
 const data = await response.json();
 const weatherInfo = data.choices[0].message.content;
 ```
+
+### Get Generation
+```
+https://openrouter.ai/api/v1/generation?id=gen-######
+{"data":
+  {"id":
+    "gen-#####",
+    "upstream_id":"chatcmpl-#####",
+    "total_cost":0.0001525,
+    "cache_discount":null,
+    "provider_name":"OpenAI",
+    "created_at":"2024-12-13T23:07:14.87033+00:00",
+    "model":"openai/gpt-3.5-turbo",
+    "app_id":null,"streamed":true,
+    "cancelled":false,"latency":280,
+    "moderation_latency":246,
+    "generation_time":786,
+    "finish_reason":"stop",
+    "tokens_prompt":14,
+    "tokens_completion":97,
+    "native_tokens_prompt":14,
+    "native_tokens_completion":97,
+    "native_tokens_reasoning":null,
+    "num_media_prompt":null,
+    "num_media_completion":null,
+    "origin":"",
+    "usage":0.0001525
+  }
+}
+
+```

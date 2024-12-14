@@ -1,9 +1,10 @@
 from fastapi import FastAPI, APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from .logger import logger
+from .cost import cost_tracker
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -30,6 +31,14 @@ app.add_middleware(
 # Create router for web pages
 router = APIRouter(tags=["web"])
 
+# Create router for API endpoints
+api_router = APIRouter(prefix="/api", tags=["api"])
+
+@api_router.get("/costs")
+async def get_costs():
+    """Get current costs for API usage and server rent"""
+    return JSONResponse(content=cost_tracker.get_current_costs())
+
 @router.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     """Serve the main landing page"""
@@ -43,4 +52,8 @@ async def pace_notes_page(request: Request):
 @router.get("/policy-foo", response_class=HTMLResponse)
 async def policy_foo_page(request: Request):
     """Serve the policy foo page"""
-    return templates.TemplateResponse("policy-foo.html", {"request": request}) 
+    return templates.TemplateResponse("policy-foo.html", {"request": request})
+
+# Include both routers
+app.include_router(router)
+app.include_router(api_router) 

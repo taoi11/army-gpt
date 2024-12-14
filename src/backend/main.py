@@ -40,8 +40,8 @@ def check_environment():
     if not os.getenv("LLM_BASE_URL"):
         logger.warning("LLM_BASE_URL not set, using default OpenRouter URL")
         
-    if not os.getenv("PACE_MODEL"):
-        logger.warning("PACE_MODEL not set, model selection may fail")
+    if not os.getenv("PACE_NOTE_MODEL"):
+        logger.warning("PACE_NOTE_MODEL not set, model selection may fail")
     
     # Set rate limit defaults
     os.environ.setdefault("RATE_LIMIT_PER_HOUR", "15")
@@ -66,8 +66,8 @@ def log_startup_info():
     logger.info("Starting Army-GPT server")
     logger.info(f"Debug mode: {os.getenv('DEBUG_MODE', 'false')}")
     logger.info(f"Rate limits: {os.getenv('RATE_LIMIT_PER_HOUR')}/hour, {os.getenv('RATE_LIMIT_PER_DAY')}/day")
-    logger.info(f"Primary LLM: {os.getenv('LLM_BASE_URL')} using model {os.getenv('PACE_MODEL')}")
-    logger.info(f"Backup LLM: {os.getenv('BACKUP_LLM_BASE_URL')} using model {os.getenv('BACKUP_PACE_MODEL')}")
+    logger.info(f"Primary LLM: {os.getenv('LLM_BASE_URL')} using model {os.getenv('PACE_NOTE_MODEL')}")
+    logger.info(f"Backup LLM: {os.getenv('BACKUP_LLM_BASE_URL')} using model {os.getenv('BACKUP_PACE_NOTE_MODEL')}")
 
 def main():
     """Main entry point for the application"""
