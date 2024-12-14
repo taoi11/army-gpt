@@ -65,7 +65,7 @@ backend:
       backup_LLM_API_parameters:
         model: BACKUP_POLICY_FINDER_MODEL
         num_ctx: BACKUP_POLICY_FINDER_NUM_CTX
-        batch_size: BACKUP_POLICY_FINDER_BATCH_SIZE
+        num_batch: BACKUP_POLICY_FINDER_BATCH_SIZE
         temperature: 0.1
         stream: true
         execution:
@@ -107,7 +107,7 @@ backend:
       backup_LLM_API_parameters:
         model: BACKUP_POLICY_READER_MODEL
         num_ctx: BACKUP_POLICY_READER_NUM_CTX
-        batch_size: BACKUP_POLICY_READER_BATCH_SIZE
+        num_batch: BACKUP_POLICY_READER_BATCH_SIZE
         temperature: 0.1
         stream: true
         execution:
@@ -140,7 +140,7 @@ backend:
       backup_LLM_API_parameters:
         model: BACKUP_CHAT_AGENT_MODEL
         num_ctx: BACKUP_CHAT_AGENT_NUM_CTX
-        batch_size: BACKUP_CHAT_AGENT_BATCH_SIZE
+        num_batch: BACKUP_CHAT_AGENT_BATCH_SIZE
         temperature: 0.1
         stream: true
 
@@ -240,3 +240,17 @@ monitoring:
     - error_tracking:
         - agent_failures
         - workflow_breaks
+
+  implementation_notes:
+    streaming:
+      - All agents use streaming by default for consistent handling
+      - Streaming responses are passed through without XML parsing
+      - Frontend handles XML parsing of streamed content
+    parameter_handling:
+      - num_batch is used internally but not passed as num_predict to Ollama
+      - num_ctx is passed directly to Ollama for context window size
+      - All agents use consistent temperature of 0.1
+    error_handling:
+      - Streaming errors return formatted XML error messages
+      - Policy content is accumulated before system prompt injection
+      - Async generators are properly handled throughout the pipeline

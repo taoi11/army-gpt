@@ -5,6 +5,7 @@ from src.backend.policyfoo.finder import policy_finder
 from src.backend.policyfoo.reader import policy_reader
 from src.backend.policyfoo.chat import chat_agent
 from src.backend.llm.provider import Message
+import re
 
 async def join_responses(policy_contents: Dict[str, str]) -> str:
     """Join policy responses while preserving XML structure"""
@@ -18,10 +19,11 @@ async def join_responses(policy_contents: Dict[str, str]) -> str:
                 try:
                     full_content = ""
                     async for chunk in content:
-                        full_content += chunk
+                        if chunk:
+                            full_content += chunk
                     content = full_content
                 except Exception as e:
-                    logger.error(f"Error reading streaming content: {e}")
+                    logger.error(f"Error reading streaming content for policy {policy_number}: {e}")
                     continue
 
             # Add policy number as attribute if not in the content
@@ -31,6 +33,7 @@ async def join_responses(policy_contents: Dict[str, str]) -> str:
                 combined += f"{content}\n"
     
     combined += "</policy_extracts>"
+    logger.debug(f"Combined {len(policy_contents)} policy responses")
     return combined
 
 def format_conversation_history(history: List[Dict]) -> List[Message]:
@@ -107,18 +110,28 @@ async def generate():
             request_id=request_id
         )
         
+        if not policy_contents:
+            logger.warning("Failed to extract policy content")
+            return StreamingResponse(
+                iter([
+                    "<response><answer>I found some relevant policies but couldn't extract their content. Please try again.</answer><citations></citations><follow_up>Maybe try rephrasing your question?</follow_up></response>"
+                ]),
+                media_type="text/plain"
+            )
+        
         # Step 3: Join policy contents
         logger.debug("Joining policy contents")
         combined_content = await join_responses(policy_contents)
         logger.debug(f"Combined content: {truncate_llm_response(combined_content)}")
         
-        # Step 4: Generate chat response
+        # Step 4: Generate chat response using combined content
         logger.info("Generating chat response")
         response = await chat_agent.generate_response(
-            query=query,
+            query=request.content,
             policy_content=combined_content,
             conversation_history=conversation_history,
-            request_id=request_id
+            request_id=request_id,
+            temperature=request.temperature
         )
         
         # If response is an async generator, convert it to a string

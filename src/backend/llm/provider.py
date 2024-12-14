@@ -42,9 +42,8 @@ class LLMProvider:
         conversation_history: Optional[List[Message]] = None,
         options: Dict = None,
         request_id: str = None,
-        stream: bool = False,
         agent_name: Optional[str] = None
-    ) -> Union[str, AsyncGenerator[str, None]]:
+    ) -> AsyncGenerator[str, None]:
         """Generate completion using primary LLM (OpenRouter)"""
         model = options.get("model")
         if not model:
@@ -68,67 +67,59 @@ class LLMProvider:
                 json={
                     "model": model,
                     "messages": messages,
-                    "stream": stream,
-                    **{k:v for k,v in options.items() if k != "model"}  # Add options except model
+                    "stream": True,
+                    **{k:v for k,v in options.items() if k != "model"}
                 },
                 timeout=self.primary_timeout,
-                stream=stream
+                stream=True
             )
             
-            # Log response details only in debug mode
-            if logger.isEnabledFor(10):  # DEBUG level
+            if logger.isEnabledFor(10):
                 logger.debug(f"{prefix}OpenRouter response status: {response.status_code}")
                 if response.status_code != 200:
                     logger.debug(f"{prefix}OpenRouter error response: {response.text}")
             
             response.raise_for_status()
 
-            if stream:
-                async def generate():
-                    try:
-                        for line in response.iter_lines():
-                            if line:
-                                try:
-                                    line_str = line.decode('utf-8')
-                                    if line_str.startswith('data: '):
-                                        line_str = line_str[6:]  # Remove 'data: ' prefix
-                                    data = json.loads(line_str)
-                                    if "choices" in data and len(data["choices"]) > 0:
-                                        content = data["choices"][0]["delta"].get("content", "")
-                                        if content:
-                                            yield content
-                                except json.JSONDecodeError:
+            async def generate():
+                generation_id = None
+                try:
+                    for line in response.iter_lines():
+                        if line:
+                            try:
+                                line_str = line.decode('utf-8')
+                                if not line_str.strip():
                                     continue
-                        
-                        # Track cost after streaming is complete
-                        if "id" in data:
-                            generation_id = data["id"]
-                            logger.debug(f"{prefix}Tracking cost for generation ID: {generation_id}")
-                            # Add delay before tracking cost
-                            await asyncio.sleep(0.5)  # 500ms delay
-                            await cost_tracker.track_api_call(generation_id)
-                    except Exception as e:
-                        logger.error(f"{prefix}Error in stream processing: {e}")
-                        raise
-                
-                return generate()
-            else:
-                response_data = response.json()
-                result = response_data["choices"][0]["message"]["content"]
-                
-                # Track cost if generation ID is present
-                if "id" in response_data:
-                    generation_id = response_data["id"]
-                    logger.debug(f"{prefix}Tracking cost for generation ID: {generation_id}")
-                    # Add delay before tracking cost
-                    await asyncio.sleep(0.5)  # 500ms delay
-                    await cost_tracker.track_api_call(generation_id)
-                
-                # Log truncated response at debug level only
-                if logger.isEnabledFor(10):
-                    logger.debug(f"{prefix}Response: {truncate_llm_response(result)}")
+                                if line_str.startswith('data: '):
+                                    line_str = line_str[6:]
+                                    if line_str == '[DONE]':
+                                        continue
+                                    try:
+                                        data = json.loads(line_str)
+                                        # Capture generation ID from first message
+                                        if not generation_id and "id" in data:
+                                            generation_id = data["id"]
+                                        if "choices" in data and len(data["choices"]) > 0:
+                                            content = data["choices"][0]["delta"].get("content", "")
+                                            if content:
+                                                yield content
+                                    except json.JSONDecodeError:
+                                        logger.debug(f"{prefix}Failed to parse JSON: {line_str}")
+                                        continue
+                            except Exception as e:
+                                logger.debug(f"{prefix}Error processing line: {str(e)}")
+                                continue
                     
-                return result
+                    # Track cost after streaming is complete
+                    if generation_id:
+                        logger.debug(f"{prefix}Tracking cost for generation ID: {generation_id}")
+                        await asyncio.sleep(0.5)
+                        await cost_tracker.track_api_call(generation_id)
+                except Exception as e:
+                    logger.error(f"{prefix}Error in stream processing: {e}")
+                    raise
+            
+            return generate()
             
         except requests.exceptions.HTTPError as e:
             if response.status_code == 402:
@@ -151,9 +142,8 @@ class LLMProvider:
         primary_options: Optional[Dict] = None,
         backup_options: Optional[Dict] = None,
         request_id: Optional[str] = None,
-        stream: bool = False,
         agent_name: Optional[str] = None
-    ) -> Union[str, AsyncGenerator[str, None]]:
+    ) -> AsyncGenerator[str, None]:
         """Generate completion using primary or backup LLM"""
         try:
             # Format messages
@@ -173,7 +163,6 @@ class LLMProvider:
                     messages=formatted_messages,
                     options=primary_options,
                     request_id=request_id,
-                    stream=stream,
                     agent_name=agent_name
                 )
             except Exception as e:
@@ -187,7 +176,6 @@ class LLMProvider:
                     messages=formatted_messages,
                     options=backup_options,
                     request_id=request_id,
-                    stream=stream,
                     agent_name=agent_name
                 )
                 
@@ -257,36 +245,31 @@ class LLMProvider:
         conversation_history: Optional[List[Message]] = None,
         options: Dict = None,
         request_id: str = None,
-        stream: bool = False,
         agent_name: Optional[str] = None
-    ) -> Union[str, AsyncGenerator[str, None]]:
+    ) -> AsyncGenerator[str, None]:
         """Generate completion using backup LLM (Ollama)"""
         model = options.get("model")
         if not model:
             raise ValueError("Model not specified in options")
             
-        # Use provided messages or format from conversation history
         if not messages:
             messages = self._prepare_messages(prompt, system_prompt, conversation_history, agent_name=agent_name)
         
         prefix = f"[{agent_name}] " if agent_name else ""
         
-        # Log request details only in debug mode
-        if logger.isEnabledFor(10):  # DEBUG level
+        if logger.isEnabledFor(10):
             logger.debug(f"{prefix}Making backup LLM request to {self.backup_base_url}")
             logger.debug(f"{prefix}Model: {model}")
             logger.debug(f"{prefix}Request ID: {request_id}")
             logger.debug(f"{prefix}Options: {options}")
         
         try:
-            # Only use parameters defined in .env
             request_data = {
                 "model": model,
                 "messages": messages,
-                "stream": True  # Always stream for consistent handling
+                "stream": True
             }
 
-            # Only add options if they're defined in .env
             if "num_ctx" in options or "num_batch" in options:
                 request_data["options"] = {}
                 if "num_ctx" in options:
@@ -298,11 +281,10 @@ class LLMProvider:
                 f"{self.backup_base_url}/api/chat",
                 json=request_data,
                 timeout=self.backup_timeout,
-                stream=True  # Always stream for consistent handling
+                stream=True
             )
             
-            # Log response details only in debug mode
-            if logger.isEnabledFor(10):  # DEBUG level
+            if logger.isEnabledFor(10):
                 logger.debug(f"{prefix}Backup LLM response status: {response.status_code}")
                 logger.debug(f"{prefix}Response headers: {dict(response.headers)}")
             

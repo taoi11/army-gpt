@@ -2,7 +2,7 @@
 const MAX_MESSAGES = 10;  // Maximum number of messages to keep
 let conversationHistory = [];
 
-// Function to extract answer from response
+// XML Parsing Functions
 function extractAnswer(response) {
     try {
         const answerMatch = response.match(/<answer>([\s\S]*?)<\/answer>/);
@@ -13,7 +13,6 @@ function extractAnswer(response) {
     }
 }
 
-// Function to extract citations from response
 function extractCitations(response) {
     try {
         const citationsMatch = response.match(/<citations>([\s\S]*?)<\/citations>/);
@@ -25,7 +24,6 @@ function extractCitations(response) {
     }
 }
 
-// Function to extract follow-up questions
 function extractFollowUp(response) {
     try {
         const followUpMatch = response.match(/<follow_up>([\s\S]*?)<\/follow_up>/);
@@ -41,39 +39,15 @@ function extractFollowUp(response) {
     }
 }
 
-// Function to create follow-up buttons
-function createFollowUpSection(questions, messageDiv) {
-    if (!questions.length) return;
-    
-    const followUpDiv = document.createElement('div');
-    followUpDiv.className = 'mt-4 space-y-2';
-    
-    const heading = document.createElement('div');
-    heading.className = 'text-sm font-medium text-gray-700';
-    heading.textContent = 'Follow-up Questions:';
-    followUpDiv.appendChild(heading);
-    
-    const buttonsDiv = document.createElement('div');
-    buttonsDiv.className = 'flex flex-wrap gap-2';
-    
-    questions.forEach(question => {
-        const button = document.createElement('button');
-        button.className = 'px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition-colors';
-        button.textContent = question;
-        button.onclick = () => {
-            const textarea = document.getElementById('questionInput');
-            textarea.value = question;
-            textarea.dispatchEvent(new Event('input')); // Trigger auto-resize
-            submitQuestion(question);
-        };
-        buttonsDiv.appendChild(button);
-    });
-    
-    followUpDiv.appendChild(buttonsDiv);
-    messageDiv.appendChild(followUpDiv);
+// Message History Management
+function addToHistory(role, content) {
+    conversationHistory.push({ role, content });
+    if (conversationHistory.length > MAX_MESSAGES) {
+        conversationHistory = conversationHistory.slice(-MAX_MESSAGES);
+    }
 }
 
-// Function to handle message editing
+// UI Message Handling
 function setupMessageActions(messageElement, originalText) {
     const editButton = messageElement.querySelector('.edit-button');
     const resubmitButton = messageElement.querySelector('.resubmit-button');
@@ -136,44 +110,27 @@ function setupMessageActions(messageElement, originalText) {
     });
 }
 
-// Function to add message to history
-function addToHistory(role, content) {
-    conversationHistory.push({
-        role: role,
-        content: content
-    });
-    console.log('Updated conversation history:', conversationHistory);
-    if (conversationHistory.length > MAX_MESSAGES) {
-        conversationHistory = conversationHistory.slice(-MAX_MESSAGES);
-    }
-}
-
-// Function to create a message element
+// Message Element Creation
 function createMessageElement(role, content) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}-message ${role === 'user' ? 'bg-gray-50' : 'bg-white'} rounded-lg shadow-md max-w-3xl mx-auto`;
 
-    // Create the flex container
     const flexContainer = document.createElement('div');
     flexContainer.className = 'flex items-start space-x-4 p-4';
 
-    // Avatar
     const avatarDiv = document.createElement('div');
     avatarDiv.className = 'flex-shrink-0';
     const avatarIcon = document.createElement('i');
     avatarIcon.className = `fas ${role === 'user' ? 'fa-user' : 'fa-robot'} text-gray-400`;
     avatarDiv.appendChild(avatarIcon);
 
-    // Content container
     const contentDiv = document.createElement('div');
     contentDiv.className = 'flex-1 min-w-0';
 
-    // Message content div (this is what we'll query for later)
     const messageContent = document.createElement('div');
-    messageContent.className = 'message-content';
+    messageContent.className = role === 'user' ? 'message-content' : 'message-content prose max-w-none';
 
     if (role === 'user') {
-        // User message with edit controls
         const messageHeader = document.createElement('div');
         messageHeader.className = 'flex justify-between items-start group';
 
@@ -199,7 +156,6 @@ function createMessageElement(role, content) {
         messageHeader.appendChild(actionsDiv);
         messageContent.appendChild(messageHeader);
 
-        // Edit container
         const editContainer = document.createElement('div');
         editContainer.className = 'edit-container hidden mt-2';
         editContainer.innerHTML = `
@@ -216,13 +172,8 @@ function createMessageElement(role, content) {
         messageContent.appendChild(editContainer);
 
         setupMessageActions(messageContent, content);
-    } else {
-        // For assistant messages, we'll just create an empty content div
-        // The sections will be added by the streaming code
-        messageContent.className = 'message-content prose max-w-none';
     }
 
-    // Assemble the message element
     contentDiv.appendChild(messageContent);
     flexContainer.appendChild(avatarDiv);
     flexContainer.appendChild(contentDiv);
@@ -231,34 +182,29 @@ function createMessageElement(role, content) {
     return messageDiv;
 }
 
-// Function to submit a question
+// Question Submission and Response Handling
 async function submitQuestion(question, isResubmission = false) {
     const textarea = document.getElementById('questionInput');
     const messagesContainer = document.getElementById('messagesContainer');
     const submitButton = document.querySelector('button[type="submit"]');
     
-    // Disable input during processing
     textarea.disabled = true;
     submitButton.disabled = true;
     
     try {
         if (!isResubmission) {
-            // Add user message to UI and history
             addToHistory('user', question);
             messagesContainer.appendChild(createMessageElement('user', question));
         }
 
-        // Create assistant message element with raw stream display
         const assistantMessage = createMessageElement('assistant', '');
         messagesContainer.appendChild(assistantMessage);
         const messageContent = assistantMessage.querySelector('.message-content');
         
-        // Create raw stream display
         const rawStream = document.createElement('div');
         rawStream.className = 'raw-stream whitespace-pre-wrap font-mono text-sm';
         messageContent.appendChild(rawStream);
 
-        // Make API request
         const response = await fetch('/llm/policyfoo/generate', {
             method: 'POST',
             headers: {
@@ -275,35 +221,21 @@ async function submitQuestion(question, isResubmission = false) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        // Get response as ReadableStream
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let fullResponse = '';
 
-        // Process the stream
         try {
             while (true) {
                 const {value, done} = await reader.read();
+                if (done) break;
                 
-                if (done) {
-                    console.log('Stream complete');
-                    break;
-                }
-                
-                // Decode the chunk and update displays
                 const chunk = decoder.decode(value, {stream: true});
-                console.log('Received chunk:', chunk);
                 fullResponse += chunk;
                 rawStream.textContent = fullResponse;
-                
-                // Scroll to bottom
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
             }
-        } catch (error) {
-            console.error('Error reading stream:', error);
-            throw error;
         } finally {
-            // Make sure to decode any remaining chunks
             const remaining = decoder.decode();
             if (remaining) {
                 fullResponse += remaining;
@@ -311,17 +243,14 @@ async function submitQuestion(question, isResubmission = false) {
             }
         }
 
-        // Now that we have the complete response, format it
         const formattedContent = document.createElement('div');
         formattedContent.className = 'formatted-content hidden';
         messageContent.appendChild(formattedContent);
 
-        // Extract and format sections
         const answer = extractAnswer(fullResponse);
         const citations = extractCitations(fullResponse);
         const followUpQuestions = extractFollowUp(fullResponse);
 
-        // Create formatted sections
         const answerSection = document.createElement('div');
         answerSection.className = 'answer-section prose max-w-none';
         answerSection.innerHTML = `<p class="text-gray-900">${answer}</p>`;
@@ -357,7 +286,6 @@ async function submitQuestion(question, isResubmission = false) {
             formattedContent.appendChild(followUpSection);
         }
 
-        // Add toggle button
         const toggleButton = document.createElement('button');
         toggleButton.className = 'toggle-view-btn text-sm text-blue-600 hover:text-blue-800 mt-2';
         toggleButton.textContent = 'Show formatted view';
@@ -376,7 +304,6 @@ async function submitQuestion(question, isResubmission = false) {
             }
         });
 
-        // Add to history
         addToHistory('assistant', fullResponse);
 
     } catch (error) {
@@ -386,35 +313,34 @@ async function submitQuestion(question, isResubmission = false) {
         errorDiv.textContent = `Error: ${error.message}`;
         messagesContainer.appendChild(errorDiv);
     } finally {
-        // Re-enable input
         textarea.disabled = false;
         submitButton.disabled = false;
         textarea.value = '';
         textarea.style.height = 'auto';
         textarea.focus();
-        
-        // Scroll to bottom
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
 }
 
-// Initialize when document is ready
-document.addEventListener('DOMContentLoaded', () => {
-    // Set up form submission
-    const form = document.getElementById('chatForm');
-    const textarea = document.getElementById('questionInput');
-
-    form.addEventListener('submit', (e) => {
+// Initialization
+function initializePolicyFoo() {
+    document.getElementById('chatForm').addEventListener('submit', async (e) => {
         e.preventDefault();
+        const textarea = document.getElementById('questionInput');
         const question = textarea.value.trim();
-        if (question) {
-            submitQuestion(question);
-        }
+        if (!question) return;
+        
+        textarea.value = '';
+        await submitQuestion(question);
     });
 
-    // Set up textarea auto-resize
+    const textarea = document.getElementById('questionInput');
     textarea.addEventListener('input', function() {
         this.style.height = 'auto';
-        this.style.height = this.scrollHeight + 'px';
+        this.style.height = Math.min(this.scrollHeight, 200) + 'px';
     });
-}); 
+
+    initializeCommon();
+}
+
+document.addEventListener('DOMContentLoaded', initializePolicyFoo); 

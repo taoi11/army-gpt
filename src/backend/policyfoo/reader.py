@@ -13,14 +13,12 @@ class PolicyReader:
         self.PRIMARY_OPTIONS = {
             "model": os.getenv("POLICY_READER_MODEL"),
             "temperature": 0.1,
-            "stream": True,
             "parallel": True  # Primary LLM can handle parallel requests
         }
         
         self.BACKUP_OPTIONS = {
             "model": os.getenv("BACKUP_POLICY_READER_MODEL"),
             "temperature": 0.1,
-            "stream": True,
             "parallel": False,  # Backup LLM should process sequentially
             "num_ctx": int(os.getenv("BACKUP_POLICY_READER_NUM_CTX")),
             "num_batch": int(os.getenv("BACKUP_POLICY_READER_BATCH_SIZE"))

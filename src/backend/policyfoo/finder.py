@@ -22,16 +22,14 @@ class PolicyFinder:
         # LLM settings
         self.PRIMARY_OPTIONS = {
             "temperature": 0.1,
-            "model": self.PRIMARY_MODEL,
-            "stream": True
+            "model": self.PRIMARY_MODEL
         }
         
         self.BACKUP_OPTIONS = {
             "temperature": 0.1,
             "model": self.BACKUP_MODEL,
             "num_ctx": self.BACKUP_CTX,
-            "num_batch": self.BACKUP_BATCH,
-            "stream": True
+            "num_batch": self.BACKUP_BATCH
         }
         
         # Log options

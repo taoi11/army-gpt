@@ -110,50 +110,35 @@ class PaceNoteAgent:
             return None
 
     @staticmethod
-    async def generate(content: str, temperature: float = 0.1, request_id: str = None, stream: bool = False):
-        """Generate a pace note using the LLM"""
+    async def generate(content: str, temperature: float = 0.1, request_id: str = None):
+        """Generate a pace note for the given content"""
         try:
             # Generate request ID if not provided
             if not request_id:
                 request_id = str(uuid.uuid4())
-
-            # Track API call
-            track_api_call("pace_note_generate", "started")
             
             # Load system prompt
             system_prompt = PaceNoteAgent.load_system_prompt()
             if not system_prompt:
-                track_api_call("pace_note_generate", "failed")
                 return None
             
-            # Update temperature in options
-            primary_options = PaceNoteAgent.PRIMARY_OPTIONS.copy()
-            primary_options["temperature"] = temperature
-            
-            backup_options = PaceNoteAgent.BACKUP_OPTIONS.copy()
-            backup_options["temperature"] = temperature
-                
-            # Generate note using LLM with tool-specific options
+            # Generate response using LLM
             response = await llm_provider.generate_completion(
                 prompt=content,
                 system_prompt=system_prompt,
-                primary_options=primary_options,
-                backup_options=backup_options,
+                primary_options={
+                    "model": os.getenv("PACE_NOTE_MODEL"),
+                    "temperature": temperature
+                },
+                backup_options={
+                    "model": os.getenv("BACKUP_PACE_NOTE_MODEL"),
+                    "temperature": temperature,
+                    "num_ctx": int(os.getenv("BACKUP_PACE_NOTE_NUM_CTX")),
+                    "num_batch": int(os.getenv("BACKUP_PACE_NOTE_BATCH_SIZE"))
+                },
                 request_id=request_id,
-                stream=stream,
-                agent_name="PaceNoteAgent"  # Add agent name to identify messages
+                agent_name="PaceNoteAgent"
             )
-            
-            if stream:
-                async def stream_response():
-                    try:
-                        async for chunk in response:
-                            yield chunk
-                        track_api_call("pace_note_generate", "success")
-                    except Exception as e:
-                        logger.error(f"[PaceNoteAgent] Error in streaming response: {e}")
-                        track_api_call("pace_note_generate", "failed")
-                return stream_response()
             
             # Only track success if we got a response
             if response:

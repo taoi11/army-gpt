@@ -12,14 +12,12 @@ class ChatAgent:
     def __init__(self):
         self.PRIMARY_OPTIONS = {
             "model": os.getenv("CHAT_AGENT_MODEL"),
-            "temperature": 0.1,
-            "stream": True
+            "temperature": 0.1
         }
         
         self.BACKUP_OPTIONS = {
             "model": os.getenv("BACKUP_CHAT_AGENT_MODEL"),
             "temperature": 0.1,
-            "stream": True,
             "num_ctx": int(os.getenv("BACKUP_CHAT_AGENT_NUM_CTX")),
             "num_batch": int(os.getenv("BACKUP_CHAT_AGENT_BATCH_SIZE"))
         }
@@ -97,7 +95,7 @@ class ChatAgent:
                     content_str = "Error reading policy content"
 
             # Replace policy content placeholder
-            system_prompt = system_prompt.replace("{{POLICY_CONTENT}}", content_str)
+            system_prompt = system_prompt.replace("{{POLICY_DATA}}", content_str)
             formatted_messages.append({
                 "role": "system",
                 "content": system_prompt
@@ -163,7 +161,6 @@ class ChatAgent:
                 primary_options=primary_options,
                 backup_options=backup_options,
                 request_id=request_id,
-                stream=True,  # Always stream
                 agent_name="ChatAgent"  # Add agent name to identify messages
             )
             
