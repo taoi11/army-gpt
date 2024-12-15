@@ -106,12 +106,13 @@ class RateLimiter:
         if len(self.daily_requests[ip]) >= self.daily_limit:
             return False
         
-        # Add timestamp for new request
+        return True
+
+    def add_request(self, ip: str):
+        """Add a successful request to the counters"""
         current_time = time.time()
         self.hourly_requests[ip].append(current_time)
         self.daily_requests[ip].append(current_time)
-        
-        return True
     
     def get_remaining(self, ip: str) -> dict:
         """Get remaining requests for the client"""
@@ -137,13 +138,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Get client IP
         client_ip = request.client.host
         
-        # Only check and enforce rate limits for LLM API calls
-        is_llm_api = request.url.path.startswith("/llm") and request.method == "POST"
+        # Only check and enforce rate limits for LLM generation endpoints
+        is_llm_generation = (
+            request.url.path.startswith("/llm/pace-notes/generate") or
+            request.url.path.startswith("/llm/policyfoo/generate")
+        ) and request.method == "POST"
         
         # Get request ID from header if present (for retries/backup attempts)
         request_id = request.headers.get("X-Request-ID")
         
-        if is_llm_api and rate_limiter._credits_check():  # Only rate limit when using OpenRouter
+        if is_llm_generation and rate_limiter._credits_check():  # Only rate limit when using OpenRouter
             if not rate_limiter.is_allowed(client_ip, request_id):
                 remaining = rate_limiter.get_remaining(client_ip)
                 error_response = {
@@ -172,10 +176,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Process the request
         response = await call_next(request)
         
-        # Add rate limit headers to response
-        if is_llm_api:
+        # Only count successful LLM generation requests
+        if is_llm_generation and response.status_code == 200:
+            rate_limiter.add_request(client_ip)
+            # Get updated limits after counting the request
+            remaining = rate_limiter.get_remaining(client_ip)
+            # Ensure headers are set for both regular and streaming responses
+            response.headers["X-RateLimit-Remaining-Hour"] = str(remaining["hourly_remaining"])
+            response.headers["X-RateLimit-Remaining-Day"] = str(remaining["daily_remaining"])
+            # Add CORS headers for rate limit headers
+            response.headers["Access-Control-Expose-Headers"] = "X-RateLimit-Remaining-Hour, X-RateLimit-Remaining-Day"
+        else:
+            # For non-LLM requests, still provide current limits
             remaining = rate_limiter.get_remaining(client_ip)
             response.headers["X-RateLimit-Remaining-Hour"] = str(remaining["hourly_remaining"])
             response.headers["X-RateLimit-Remaining-Day"] = str(remaining["daily_remaining"])
+            response.headers["Access-Control-Expose-Headers"] = "X-RateLimit-Remaining-Hour, X-RateLimit-Remaining-Day"
         
         return response 
