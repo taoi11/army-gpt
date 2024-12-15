@@ -37,6 +37,15 @@ async def check_credits():
     """Check if we have credits available"""
     return {"credits_available": credits_checker.has_credits}
 
+@router.get("/limits")
+async def get_rate_limits(request: Request):
+    """Get current rate limits without affecting the count"""
+    remaining = rate_limiter.get_remaining(request.client.host)
+    return JSONResponse(content={
+        "hourly_remaining": remaining["hourly_remaining"],
+        "daily_remaining": remaining["daily_remaining"]
+    })
+
 @router.post("/pace-notes/generate")
 async def generate_pace_note(
     request: PaceNoteRequest,

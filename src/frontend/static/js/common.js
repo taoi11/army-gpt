@@ -20,7 +20,7 @@ async function checkCredits() {
 async function checkRateLimits() {
     try {
         const baseUrl = window.location.origin;
-        const response = await fetch(`${baseUrl}/api/limits`);
+        const response = await fetch(`${baseUrl}/llm/limits`);
         if (!response.ok) {
             if (response.status === 429) {
                 // Handle Cloudflare rate limit

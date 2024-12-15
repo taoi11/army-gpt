@@ -49,15 +49,6 @@ async def get_costs():
             status_code=500
         )
 
-@api_router.get("/limits")
-async def get_rate_limits(request: Request):
-    """Get current rate limits without affecting the count"""
-    remaining = rate_limiter.get_remaining(request.client.host)
-    return JSONResponse(content={
-        "hourly_remaining": remaining["hourly_remaining"],
-        "daily_remaining": remaining["daily_remaining"]
-    })
-
 @router.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     """Serve the main landing page"""

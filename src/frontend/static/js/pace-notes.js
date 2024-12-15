@@ -183,7 +183,7 @@ async function handleSubmit(e) {
 
         // Update rate limits after response is complete
         try {
-            const limitsResponse = await fetch('/api/limits');
+            const limitsResponse = await fetch('/llm/limits');
             const limitsData = await limitsResponse.json();
             updateRateLimits(limitsData);
         } catch (error) {
