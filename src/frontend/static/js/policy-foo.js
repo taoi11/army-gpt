@@ -218,6 +218,27 @@ async function submitQuestion(question, isResubmission = false) {
         });
 
         if (!response.ok) {
+            if (response.status === 429) {
+                const errorData = await response.json();
+                const hourlyRemaining = errorData.error.details.hourly_remaining;
+                const dailyRemaining = errorData.error.details.daily_remaining;
+                
+                const errorMessage = document.createElement('div');
+                errorMessage.className = 'bg-white rounded-lg shadow-md p-6 max-w-3xl mx-auto';
+                errorMessage.innerHTML = `
+                    <div class="p-4 bg-amber-100 text-amber-800 rounded-lg">
+                        <p class="font-semibold mb-2">Rate Limit Reached</p>
+                        <p>You've reached the request limit. Please wait before trying again.</p>
+                        <p class="mt-2 text-sm">
+                            Remaining requests:<br>
+                            Hourly: ${hourlyRemaining}<br>
+                            Daily: ${dailyRemaining}
+                        </p>
+                    </div>
+                `;
+                messagesContainer.appendChild(errorMessage);
+                return;
+            }
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
@@ -241,6 +262,15 @@ async function submitQuestion(question, isResubmission = false) {
                 fullResponse += remaining;
                 rawStream.textContent = fullResponse;
             }
+        }
+
+        // Update rate limits after response is complete
+        try {
+            const limitsResponse = await fetch('/api/limits');
+            const limitsData = await limitsResponse.json();
+            updateRateLimits(limitsData);
+        } catch (error) {
+            console.error('Error updating rate limits:', error);
         }
 
         const formattedContent = document.createElement('div');

@@ -118,6 +118,28 @@ async function handleSubmit(e) {
 
         clearTimeout(timeoutId); // Clear timeout if request succeeds
 
+        if (!response.ok) {
+            if (response.status === 429) {
+                const errorData = await response.json();
+                const hourlyRemaining = errorData.error.details.hourly_remaining;
+                const dailyRemaining = errorData.error.details.daily_remaining;
+                
+                responseBox.innerHTML = `
+                    <div class="p-4 bg-amber-100 text-amber-800 rounded-lg">
+                        <p class="font-semibold mb-2">Rate Limit Reached</p>
+                        <p>You've reached the request limit. Please wait before trying again.</p>
+                        <p class="mt-2 text-sm">
+                            Remaining requests:<br>
+                            Hourly: ${hourlyRemaining}<br>
+                            Daily: ${dailyRemaining}
+                        </p>
+                    </div>
+                `;
+                return;
+            }
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
         // Handle streaming response
         const reader = response.body.getReader();
         activeReader = reader;
@@ -152,14 +174,20 @@ async function handleSubmit(e) {
                             fullText += data.note;
                             responseParagraph.textContent = fullText;
                         }
-                        if (data.remaining_requests) {
-                            updateRateLimits(data.remaining_requests);
-                        }
                     } catch (e) {
                         console.error('Error parsing SSE data:', e);
                     }
                 }
             }
+        }
+
+        // Update rate limits after response is complete
+        try {
+            const limitsResponse = await fetch('/api/limits');
+            const limitsData = await limitsResponse.json();
+            updateRateLimits(limitsData);
+        } catch (error) {
+            console.error('Error updating rate limits:', error);
         }
 
         // Remove old responses if we have more than MAX_RESPONSES

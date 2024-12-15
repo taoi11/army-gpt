@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from .logger import logger
 from .cost import cost_tracker
+from .rate_limit import rate_limiter
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -47,6 +48,15 @@ async def get_costs():
             content={"error": "Internal server error"},
             status_code=500
         )
+
+@api_router.get("/limits")
+async def get_rate_limits(request: Request):
+    """Get current rate limits without affecting the count"""
+    remaining = rate_limiter.get_remaining(request.client.host)
+    return JSONResponse(content={
+        "hourly_remaining": remaining["hourly_remaining"],
+        "daily_remaining": remaining["daily_remaining"]
+    })
 
 @router.get("/", response_class=HTMLResponse)
 async def root(request: Request):
