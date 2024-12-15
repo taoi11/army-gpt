@@ -1,7 +1,8 @@
 // Rate limit and credits management
 async function checkCredits() {
     try {
-        const response = await fetch('/llm/credits');
+        const baseUrl = window.location.origin;
+        const response = await fetch(`${baseUrl}/llm/credits`);
         const data = await response.json();
         const banner = document.getElementById('creditsBanner');
         
@@ -18,7 +19,8 @@ async function checkCredits() {
 // Check rate limits from the API
 async function checkRateLimits() {
     try {
-        const response = await fetch('/api/limits');
+        const baseUrl = window.location.origin;
+        const response = await fetch(`${baseUrl}/api/limits`);
         if (!response.ok) {
             if (response.status === 429) {
                 // Handle Cloudflare rate limit
@@ -89,9 +91,19 @@ async function fetchWithRateLimits(url, options = {}) {
     const maxRetries = 3;
     let lastError;
 
+    // Ensure absolute URL
+    const baseUrl = window.location.origin;
+    const absoluteUrl = url.startsWith('http') ? url : `${baseUrl}${url}`;
+
     for (let i = 0; i < maxRetries; i++) {
         try {
-            const response = await fetch(url, options);
+            const response = await fetch(absoluteUrl, {
+                ...options,
+                headers: {
+                    ...options.headers,
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
             
             // Handle Cloudflare errors
             if (response.status === 429) {
