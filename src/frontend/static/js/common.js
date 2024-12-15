@@ -40,26 +40,48 @@ function updateRateLimits(limits) {
     if (!limits) return;
 
     try {
-        // Update all hourly limit displays
-        document.querySelectorAll('.rate-limit-hourly').forEach(element => {
-            if (element) {
-                element.textContent = limits.hourly_remaining === 999 ? '∞' : 
-                                    limits.hourly_remaining === 0 ? '0' : 
-                                    limits.hourly_remaining || '--';
-            }
-        });
-        
-        // Update all daily limit displays
-        document.querySelectorAll('.rate-limit-daily').forEach(element => {
-            if (element) {
-                element.textContent = limits.daily_remaining === 999 ? '∞' : 
-                                    limits.daily_remaining === 0 ? '0' : 
-                                    limits.daily_remaining || '--';
-            }
-        });
+        // Find rate limit elements
+        const hourlyElements = document.querySelectorAll('.rate-limit-hourly');
+        const dailyElements = document.querySelectorAll('.rate-limit-daily');
+
+        if (hourlyElements.length === 0 || dailyElements.length === 0) {
+            console.warn('Rate limit elements not found, retrying in 500ms');
+            // Retry once after a short delay
+            setTimeout(() => {
+                const retryHourly = document.querySelectorAll('.rate-limit-hourly');
+                const retryDaily = document.querySelectorAll('.rate-limit-daily');
+                if (retryHourly.length > 0 && retryDaily.length > 0) {
+                    updateRateLimitElements(retryHourly, retryDaily, limits);
+                }
+            }, 500);
+            return;
+        }
+
+        updateRateLimitElements(hourlyElements, dailyElements, limits);
     } catch (error) {
         console.error('Error updating rate limit display:', error);
     }
+}
+
+// Helper function to update rate limit elements
+function updateRateLimitElements(hourlyElements, dailyElements, limits) {
+    // Update hourly elements
+    hourlyElements.forEach(element => {
+        if (element) {
+            element.textContent = limits.hourly_remaining === 999 ? '∞' : 
+                                limits.hourly_remaining === 0 ? '0' : 
+                                limits.hourly_remaining || '--';
+        }
+    });
+    
+    // Update daily elements
+    dailyElements.forEach(element => {
+        if (element) {
+            element.textContent = limits.daily_remaining === 999 ? '∞' : 
+                                limits.daily_remaining === 0 ? '0' : 
+                                limits.daily_remaining || '--';
+        }
+    });
 }
 
 // Helper function for fetch with retry
@@ -114,9 +136,11 @@ function copyToClipboard(text) {
 
 // Initialize common features
 function initializeCommon() {
-    // Initial checks
-    checkCredits();
-    checkRateLimits();
+    // Initial checks with retry
+    setTimeout(() => {
+        checkCredits();
+        checkRateLimits();
+    }, 500); // Small delay to ensure DOM is ready
     
     // Set up intervals
     setInterval(checkCredits, 5 * 60 * 1000);  // Check credits every 5 minutes
