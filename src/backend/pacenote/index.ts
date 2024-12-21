@@ -1,16 +1,15 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { config } from '../config';
-import { logger } from '../utils/logger';
-import { llmProvider } from '../llm/provider';
-import { LLMError } from '../utils/errors';
-import type { CompletionOptions } from '../llm/provider';
+import { config } from '../config.js';
+import { logger } from '../utils/logger.js';
+import { llmProvider } from '../llm/provider.js';
+import { LLMError } from '../utils/errors.js';
+import type { CompletionOptions } from '../llm/provider.js';
 
 // Types
 interface PaceNoteOptions {
   temperature?: number;
   stream?: boolean;
-  maxTokens?: number;
 }
 
 interface CompetencySection {

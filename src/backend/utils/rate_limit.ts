@@ -1,29 +1,50 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { config } from '../config';
-import { logger } from './logger';
+import { config } from '../config.js';
+import { logger } from './logger.js';
 
-interface RequestWindow {
-  timestamps: number[];
-}
-
+// Types
 interface RateLimitResponse {
   hourlyRemaining: number;
   dailyRemaining: number;
 }
 
+interface RateLimitError {
+  error: {
+    code: 429;
+    message: string;
+    details: {
+      hourlyRemaining: number;
+      dailyRemaining: number;
+      hourlyLimit: number;
+      dailyLimit: number;
+      retryAfter: string;
+    };
+  };
+}
+
+const RATE_LIMITED_ENDPOINTS = [
+  '/api/llm/pace-notes/generate',
+  '/api/llm/policyfoo/chat'
+] as const;
+
+type RateLimitedEndpoint = typeof RATE_LIMITED_ENDPOINTS[number];
+
+// Simple rate limiter class
 class RateLimiter {
   private hourlyRequests: Map<string, number[]>;
   private dailyRequests: Map<string, number[]>;
-  private requestIds: Set<string>;
   private readonly HOUR = 3600; // seconds
   private readonly DAY = 86400; // seconds
-  private creditsCheck: () => boolean;
+  private hasCredits: boolean;
 
   constructor() {
     this.hourlyRequests = new Map();
     this.dailyRequests = new Map();
-    this.requestIds = new Set();
-    this.creditsCheck = () => true;
+    this.hasCredits = true;
+  }
+
+  setHasCredits(value: boolean): void {
+    this.hasCredits = value;
   }
 
   private cleanupOldRequests(ip: string): void {
@@ -42,37 +63,15 @@ class RateLimiter {
       ip,
       dailyTimestamps.filter(ts => currentTime - ts < this.DAY)
     );
-
-    // Cleanup old request IDs
-    this.requestIds = new Set(
-      Array.from(this.requestIds).filter(rid => {
-        const [timestamp] = rid.split('-');
-        return timestamp.startsWith('t') &&
-          currentTime - parseFloat(timestamp.slice(1)) < this.DAY;
-      })
-    );
   }
 
-  setCreditsCheck(callback: () => boolean): void {
-    this.creditsCheck = callback;
-  }
-
-  isAllowed(ip: string, requestId?: string): boolean {
-    // Skip rate limiting for backup LLM
-    if (!this.creditsCheck()) {
+  isAllowed(ip: string): boolean {
+    // Skip rate limiting when using backup LLM
+    if (!this.hasCredits) {
       return true;
     }
 
     this.cleanupOldRequests(ip);
-
-    // Handle duplicate requests
-    if (requestId) {
-      if (this.requestIds.has(requestId)) {
-        return true;
-      }
-      const timestampedId = `t${Date.now() / 1000}-${requestId}`;
-      this.requestIds.add(timestampedId);
-    }
 
     const hourlyCount = (this.hourlyRequests.get(ip) || []).length;
     const dailyCount = (this.dailyRequests.get(ip) || []).length;
@@ -101,7 +100,7 @@ class RateLimiter {
     this.cleanupOldRequests(ip);
 
     // Return unlimited for backup LLM
-    if (!this.creditsCheck()) {
+    if (!this.hasCredits) {
       return {
         hourlyRemaining: 999,
         dailyRemaining: 999
@@ -121,51 +120,42 @@ class RateLimiter {
 // Create singleton instance
 export const rateLimiter = new RateLimiter();
 
-// Fastify plugin for rate limiting
-export async function rateLimitPlugin(
-  request: FastifyRequest,
-  reply: FastifyReply
-) {
-  const clientIp = request.ip;
-  const requestId = request.headers['x-request-id'] as string;
+// Simple middleware function
+export async function checkRateLimit(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  // Only check specific endpoints
+  const isLimitedEndpoint = (
+    RATE_LIMITED_ENDPOINTS.includes(request.url as RateLimitedEndpoint) &&
+    request.method === 'POST'
+  );
 
-  // Only check LLM generation endpoints
-  const isLLMGeneration = (
-    request.url.startsWith('/llm/pace-notes/generate') ||
-    request.url.startsWith('/llm/policyfoo/generate')
-  ) && request.method === 'POST';
-
-  if (isLLMGeneration && rateLimiter.creditsCheck()) {
-    if (!rateLimiter.isAllowed(clientIp, requestId)) {
-      const remaining = rateLimiter.getRemaining(clientIp);
-      return reply.status(429).send({
-        error: {
-          code: 429,
-          message: 'Rate limit exceeded',
-          details: {
-            hourlyRemaining: remaining.hourlyRemaining,
-            dailyRemaining: remaining.dailyRemaining,
-            hourlyLimit: config.rateLimiting.hourlyLimit,
-            dailyLimit: config.rateLimiting.dailyLimit,
-            retryAfter: 'Wait for the next hour or day depending on which limit was exceeded'
-          }
-        }
-      });
-    }
+  if (!isLimitedEndpoint) {
+    return;
   }
 
-  // Add response hook to track successful requests
-  reply.addHook('onSend', (request, reply, payload, done) => {
-    if (isLLMGeneration && reply.statusCode === 200) {
-      rateLimiter.addRequest(clientIp);
-    }
-    
-    // Add rate limit headers
+  const clientIp = request.ip;
+
+  if (!rateLimiter.isAllowed(clientIp)) {
     const remaining = rateLimiter.getRemaining(clientIp);
-    reply.header('X-RateLimit-Remaining-Hour', remaining.hourlyRemaining.toString());
-    reply.header('X-RateLimit-Remaining-Day', remaining.dailyRemaining.toString());
-    reply.header('Access-Control-Expose-Headers', 'X-RateLimit-Remaining-Hour, X-RateLimit-Remaining-Day');
-    
-    done(null, payload);
-  });
+    const response: RateLimitError = {
+      error: {
+        code: 429,
+        message: 'Rate limit exceeded',
+        details: {
+          hourlyRemaining: remaining.hourlyRemaining,
+          dailyRemaining: remaining.dailyRemaining,
+          hourlyLimit: config.rateLimiting.hourlyLimit,
+          dailyLimit: config.rateLimiting.dailyLimit,
+          retryAfter: 'Wait for the next hour or day depending on which limit was exceeded'
+        }
+      }
+    };
+    reply.status(429).send(response);
+    return;
+  }
+
+  // Add rate limit headers
+  const remaining = rateLimiter.getRemaining(clientIp);
+  reply.header('X-RateLimit-Remaining-Hour', remaining.hourlyRemaining.toString());
+  reply.header('X-RateLimit-Remaining-Day', remaining.dailyRemaining.toString());
+  reply.header('Access-Control-Expose-Headers', 'X-RateLimit-Remaining-Hour, X-RateLimit-Remaining-Day');
 } 

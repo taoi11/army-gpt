@@ -27,7 +27,6 @@ export interface PolicyContent {
 export interface PolicyAgentOptions {
   temperature?: number;
   stream?: boolean;
-  maxTokens?: number;
 }
 
 // Error types

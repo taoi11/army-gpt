@@ -1,7 +1,7 @@
-import { BaseAgent } from './base';
-import { PolicyContent, PolicyError } from './types';
-import { config } from '../config';
-import { logger } from '../utils/logger';
+import { BaseAgent } from './base.js';
+import { PolicyContent, PolicyError, PolicyAgentOptions } from './types.js';
+import { config, ModelConfig } from '../config.js';
+import { logger } from '../utils/logger.js';
 
 export class PolicyReader extends BaseAgent {
   constructor() {
@@ -9,14 +9,14 @@ export class PolicyReader extends BaseAgent {
   }
 
   protected getPromptFileName(): string {
-    return 'policy-reader';
+    return 'policyReader';
   }
 
-  protected getLLMConfig(isBackup: boolean): any {
+  protected getLLMConfig(isBackup: boolean): ModelConfig['primary'] | ModelConfig['backup'] {
     return isBackup ? config.policy.reader.backup : config.policy.reader.primary;
   }
 
-  async read(policyNumber: string, section: string, options: any = {}): Promise<PolicyContent> {
+  async read(policyNumber: string, section: string, options: PolicyAgentOptions = {}): Promise<PolicyContent> {
     try {
       const response = await this.generateSync(
         JSON.stringify({ policyNumber, section }),

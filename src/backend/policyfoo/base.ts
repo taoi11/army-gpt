@@ -1,9 +1,9 @@
-import { config } from '../config';
-import { logger } from '../utils/logger';
-import { llmProvider } from '../llm/provider';
-import { LLMError } from '../utils/errors';
-import type { CompletionOptions } from '../llm/provider';
-import type { PolicyAgentOptions, Message } from './types';
+import { config, ModelConfig } from '../config.js';
+import { logger } from '../utils/logger.js';
+import { llmProvider } from '../llm/provider.js';
+import { LLMError } from '../utils/errors.js';
+import type { CompletionOptions } from '../llm/provider.js';
+import type { PolicyAgentOptions, Message } from './types.js';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -54,7 +54,6 @@ export abstract class BaseAgent {
     return {
       model: baseConfig.model,
       temperature: options.temperature ?? baseConfig.temperature,
-      maxTokens: options.maxTokens ?? (isBackup ? undefined : baseConfig.maxTokens),
       stream: options.stream ?? true,
       ...(isBackup ? {
         numCtx: baseConfig.numCtx,
@@ -66,7 +65,7 @@ export abstract class BaseAgent {
   /**
    * Get LLM config for this agent
    */
-  protected abstract getLLMConfig(isBackup: boolean): any;
+  protected abstract getLLMConfig(isBackup: boolean): ModelConfig['primary'] | ModelConfig['backup'];
 
   /**
    * Generate completion with proper error handling

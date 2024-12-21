@@ -1,7 +1,7 @@
-import { BaseAgent } from './base';
-import { Message, PolicyResponse, PolicyError, formatResponse, parseResponse } from './types';
-import { config } from '../config';
-import { logger } from '../utils/logger';
+import { BaseAgent } from './base.js';
+import { Message, PolicyResponse, PolicyError, PolicyAgentOptions, formatResponse, parseResponse } from './types.js';
+import { config, ModelConfig } from '../config.js';
+import { logger } from '../utils/logger.js';
 
 export class PolicyChat extends BaseAgent {
   constructor() {
@@ -9,14 +9,14 @@ export class PolicyChat extends BaseAgent {
   }
 
   protected getPromptFileName(): string {
-    return 'policy-chat';
+    return 'chatAgent';
   }
 
-  protected getLLMConfig(isBackup: boolean): any {
+  protected getLLMConfig(isBackup: boolean): ModelConfig['primary'] | ModelConfig['backup'] {
     return isBackup ? config.policy.chat.backup : config.policy.chat.primary;
   }
 
-  async respond(message: string, history: Message[] = [], options: any = {}): Promise<PolicyResponse> {
+  async respond(message: string, history: Message[] = [], options: PolicyAgentOptions = {}): Promise<PolicyResponse> {
     try {
       const response = await this.generateSync(
         message,
@@ -49,7 +49,7 @@ export class PolicyChat extends BaseAgent {
     }
   }
 
-  async *streamResponse(message: string, history: Message[] = [], options: any = {}): AsyncGenerator<string, void, unknown> {
+  async *streamResponse(message: string, history: Message[] = [], options: PolicyAgentOptions = {}): AsyncGenerator<string, void, unknown> {
     try {
       yield* this.generateCompletion(
         message,

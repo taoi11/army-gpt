@@ -1,7 +1,7 @@
-import { BaseAgent } from './base';
-import { PolicyReference, PolicyError } from './types';
-import { config } from '../config';
-import { logger } from '../utils/logger';
+import { BaseAgent } from './base.js';
+import { PolicyReference, PolicyError, PolicyAgentOptions } from './types.js';
+import { config, ModelConfig } from '../config.js';
+import { logger } from '../utils/logger.js';
 
 export class PolicyFinder extends BaseAgent {
   constructor() {
@@ -9,14 +9,14 @@ export class PolicyFinder extends BaseAgent {
   }
 
   protected getPromptFileName(): string {
-    return 'policy-finder';
+    return 'policyFinder';
   }
 
-  protected getLLMConfig(isBackup: boolean): any {
+  protected getLLMConfig(isBackup: boolean): ModelConfig['primary'] | ModelConfig['backup'] {
     return isBackup ? config.policy.finder.backup : config.policy.finder.primary;
   }
 
-  async search(query: string, options: any = {}): Promise<PolicyReference[]> {
+  async search(query: string, options: PolicyAgentOptions = {}): Promise<PolicyReference[]> {
     try {
       const response = await this.generateSync(
         query,

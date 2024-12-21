@@ -12,7 +12,7 @@ dotenv.config();
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 type ModelProvider = 'OpenRouter' | 'Ollama';
 
-interface ServerConfig {
+export interface ServerConfig {
   port: number;
   host: string;
   debug: boolean;
@@ -20,13 +20,13 @@ interface ServerConfig {
   logLevel: LogLevel;
 }
 
-interface RateLimitConfig {
+export interface RateLimitConfig {
   hourlyLimit: number;
   dailyLimit: number;
   enabled: boolean;
 }
 
-interface LLMConfig {
+export interface LLMConfig {
   primary: {
     baseUrl: string;
     apiKey: string;
@@ -39,11 +39,10 @@ interface LLMConfig {
   };
 }
 
-interface ModelConfig {
+export interface ModelConfig {
   primary: {
     model: string;
     temperature?: number;
-    maxTokens?: number;
   };
   backup: {
     model: string;
@@ -53,7 +52,7 @@ interface ModelConfig {
   };
 }
 
-interface PathConfig {
+export interface PathConfig {
   static: string;
   templates: string;
   data: string;
@@ -61,7 +60,7 @@ interface PathConfig {
   prompts: string;
 }
 
-interface Config {
+export interface Config {
   server: ServerConfig;
   rateLimiting: RateLimitConfig;
   llm: LLMConfig;
@@ -106,8 +105,7 @@ export const config: Config = {
   paceNote: {
     primary: {
       model: process.env.PACE_NOTE_MODEL || 'amazon/nova-pro-v1',
-      temperature: 0.1,
-      maxTokens: 2048
+      temperature: 0.1
     },
     backup: {
       model: process.env.BACKUP_PACE_NOTE_MODEL || 'qwen2.5:32b-instruct-q4_K_S',
@@ -121,8 +119,7 @@ export const config: Config = {
     finder: {
       primary: {
         model: process.env.POLICY_FINDER_MODEL || 'google/gemini-flash-1.5',
-        temperature: 0.1,
-        maxTokens: 4096
+        temperature: 0.1
       },
       backup: {
         model: process.env.BACKUP_POLICY_FINDER_MODEL || 'llama3.2:3b-instruct-q8_0',
@@ -134,8 +131,7 @@ export const config: Config = {
     reader: {
       primary: {
         model: process.env.POLICY_READER_MODEL || 'amazon/nova-lite-v1',
-        temperature: 0.1,
-        maxTokens: 8192
+        temperature: 0.1
       },
       backup: {
         model: process.env.BACKUP_POLICY_READER_MODEL || 'llama3.2:3b-instruct-q8_0',
@@ -147,8 +143,7 @@ export const config: Config = {
     chat: {
       primary: {
         model: process.env.CHAT_AGENT_MODEL || 'amazon/nova-pro-v1',
-        temperature: 0.1,
-        maxTokens: 4096
+        temperature: 0.1
       },
       backup: {
         model: process.env.BACKUP_CHAT_AGENT_MODEL || 'qwen2.5:32b-instruct-q4_K_S',
@@ -164,6 +159,6 @@ export const config: Config = {
     templates: path.join(__dirname, '../../frontend/templates'),
     data: path.join(__dirname, '../../data'),
     policies: path.join(__dirname, '../../policies'),
-    prompts: path.join(__dirname, '../../prompts')
+    prompts: path.join(__dirname, '../prompts')
   }
 }; 

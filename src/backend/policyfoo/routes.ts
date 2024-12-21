@@ -1,9 +1,8 @@
 import { FastifyInstance } from 'fastify';
-import { rateLimitPlugin } from '../utils/rate_limit';
-import { PolicyError } from './types';
-import { PolicyFinder } from './finder';
-import { PolicyReader } from './reader';
-import { PolicyChat } from './chat';
+import { PolicyError } from './types.js';
+import { PolicyFinder } from './finder.js';
+import { PolicyReader } from './reader.js';
+import { PolicyChat } from './chat.js';
 
 // Initialize agents
 const finder = new PolicyFinder();
@@ -11,9 +10,6 @@ const reader = new PolicyReader();
 const chat = new PolicyChat();
 
 export async function setupPolicyRoutes(app: FastifyInstance) {
-  // Apply rate limiting to all policy routes
-  app.addHook('preHandler', rateLimitPlugin);
-
   // Search policies endpoint
   app.post('/api/policy/search', async (request, reply) => {
     try {

@@ -1,12 +1,12 @@
 import fastify from 'fastify';
-import { config } from './config';
-import { logger } from './utils/logger';
-import { errorHandler } from './utils/errors';
-import { setupWebRoutes } from './utils/web';
-import { setupLLMRoutes } from './llm/routes';
-import { creditsChecker } from './llm/keycheck';
-import { rateLimiter } from './utils/rate_limit';
-import { setupPolicyRoutes } from './policyfoo/routes';
+import { config } from './config.js';
+import { logger } from './utils/logger.js';
+import { errorHandler } from './utils/errors.js';
+import { setupWebRoutes } from './utils/web.js';
+import { setupLLMRoutes } from './llm/routes.js';
+import { creditsChecker } from './llm/keycheck.js';
+import { rateLimiter, checkRateLimit } from './utils/rate_limit.js';
+import { setupPolicyRoutes } from './policyfoo/routes.js';
 
 // Create Fastify instance
 const app = fastify({
@@ -20,13 +20,19 @@ async function bootstrap() {
     // Set error handler
     app.setErrorHandler(errorHandler);
 
+    // Add rate limiting middleware
+    app.addHook('preHandler', checkRateLimit);
+
     // Setup routes
     await setupWebRoutes(app);
     await setupLLMRoutes(app);
     await setupPolicyRoutes(app);
 
-    // Start credit checker
+    // Start credit checker and connect it to rate limiter
     creditsChecker.start();
+    creditsChecker.onCreditsChange((hasCredits) => {
+      rateLimiter.setHasCredits(hasCredits);
+    });
 
     // Start server
     const port = config.server.port || 8020;

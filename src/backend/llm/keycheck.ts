@@ -1,16 +1,17 @@
 import axios from 'axios';
-import { config } from '../config';
-import { logger } from '../utils/logger';
+import { config } from '../config.js';
+import { logger } from '../utils/logger.js';
 
 class OpenRouterCreditsChecker {
   private creditsAvailable: boolean = true;
-  private checkInterval: NodeJS.Timer | null = null;
+  private checkInterval: NodeJS.Timeout | null = null;
   private readonly CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes in milliseconds
+  private creditsChangeCallback: ((hasCredits: boolean) => void) | null = null;
 
   async checkCredits(): Promise<boolean> {
     if (!config.llm.primary.apiKey) {
       logger.error('OPENROUTER_API_KEY not found');
-      this.creditsAvailable = false;
+      this.updateCreditsState(false);
       return false;
     }
 
@@ -28,18 +29,33 @@ class OpenRouterCreditsChecker {
       // If we get any error response, we're out of credits
       if (response.status !== 200) {
         logger.warn(`OpenRouter credits check failed: ${response.status}`);
-        this.creditsAvailable = false;
+        this.updateCreditsState(false);
         return false;
       }
 
-      this.creditsAvailable = true;
+      this.updateCreditsState(true);
       return true;
 
     } catch (error) {
       logger.error('Error checking OpenRouter credits:', error);
-      this.creditsAvailable = false;
+      this.updateCreditsState(false);
       return false;
     }
+  }
+
+  private updateCreditsState(newState: boolean): void {
+    if (this.creditsAvailable !== newState) {
+      this.creditsAvailable = newState;
+      if (this.creditsChangeCallback) {
+        this.creditsChangeCallback(newState);
+      }
+    }
+  }
+
+  onCreditsChange(callback: (hasCredits: boolean) => void): void {
+    this.creditsChangeCallback = callback;
+    // Immediately call with current state
+    callback(this.creditsAvailable);
   }
 
   start(): void {
