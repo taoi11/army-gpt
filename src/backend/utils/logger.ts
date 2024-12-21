@@ -1,5 +1,5 @@
 import winston from 'winston';
-import { config } from '../config';
+import { config } from '../config.js';
 
 // Types
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -25,11 +25,12 @@ export function truncateLLMResponse(response: any, headTailLength = 100): string
 
 // Create logger instance
 const loggerInstance = winston.createLogger({
-  level: config.debug ? 'debug' : 'info',
+  level: config.server.logLevel,
   format: winston.format.combine(
     winston.format.timestamp(),
-    winston.format.printf(({ timestamp, level, message }) => {
-      return `${timestamp} - army-gpt - ${level}: ${message}`;
+    winston.format.printf(({ timestamp, level, message, ...meta }) => {
+      const metaStr = Object.keys(meta).length ? JSON.stringify(meta) : '';
+      return `${timestamp} - army-gpt - ${level}: ${message} ${metaStr}`;
     })
   ),
   transports: [
@@ -43,7 +44,7 @@ const loggerInstance = winston.createLogger({
 });
 
 // Add debug mode warning if enabled
-if (config.debug) {
+if (config.server.debug) {
   loggerInstance.warn('Debug mode is enabled - verbose logging will be shown');
 }
 

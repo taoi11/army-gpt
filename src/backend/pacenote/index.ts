@@ -36,7 +36,7 @@ export class PaceNoteAgent {
 
   constructor() {
     // Log initialization with models from config
-    logger.debug(`${this.AGENT_NAME} initialized with models:`, {
+    logger.debug('PaceNoteAgent initialized with models:', {
       primary: config.paceNote.primary.model,
       backup: config.paceNote.backup.model
     });
@@ -157,11 +157,9 @@ export class PaceNoteAgent {
       }
 
       // Debug logging
-      if (logger.isLevelEnabled('debug')) {
-        logger.debug(`[${this.AGENT_NAME}] System prompt loaded: ${this.systemPrompt.length} chars`);
-        logger.debug(`[${this.AGENT_NAME}] Competency list loaded: ${this.competencyList.length} chars`);
-        logger.debug(`[${this.AGENT_NAME}] Examples loaded: ${this.examples.length} chars`);
-      }
+      logger.debug(`[${this.AGENT_NAME}] System prompt loaded: ${this.systemPrompt.length} chars`);
+      logger.debug(`[${this.AGENT_NAME}] Competency list loaded: ${this.competencyList.length} chars`);
+      logger.debug(`[${this.AGENT_NAME}] Examples loaded: ${this.examples.length} chars`);
 
     } catch (error) {
       logger.error(`[${this.AGENT_NAME}] Error loading knowledge base:`, error);
@@ -192,7 +190,6 @@ export class PaceNoteAgent {
     return {
       model: baseConfig.model,
       temperature: options.temperature ?? baseConfig.temperature,
-      maxTokens: options.maxTokens ?? (isBackup ? undefined : baseConfig.maxTokens),
       stream: options.stream ?? true,
       ...(isBackup ? {
         numCtx: config.paceNote.backup.numCtx,
@@ -215,9 +212,7 @@ export class PaceNoteAgent {
       }
 
       // Debug logging
-      if (logger.isLevelEnabled('debug')) {
-        logger.debug(`[${this.AGENT_NAME}] Processing request ${requestId?.slice(0, 8) || 'no-id'}`);
-      }
+      logger.debug(`[${this.AGENT_NAME}] Processing request ${requestId?.slice(0, 8) || 'no-id'}`);
 
       // Prepare the prompt
       const prompt = this.preparePrompt(content);
