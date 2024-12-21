@@ -1,6 +1,7 @@
-# Python
-__pycache__/
-*.pyc
+# Node
+dist/
+node_modules/
+package-lock.json
 
 # Environment
 .env

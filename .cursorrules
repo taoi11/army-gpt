@@ -1,11 +1,11 @@
 This is a docker python container app that will run the backend services for my project. 
 
-The /.appLogic folder will be used to keep track of the project structure as we build it.
-  - Keep the /.appLogic fresh in your mind as you write the code.
-  - Read this as needed only edit the /.appLogic files when users request changes.
-  - follow the structure as defined in the /.appLogic files closely as possible.
+The .appLogic/ folder will be used to keep track of the project structure as we build it.
+  - Keep the .appLogic/ fresh in your mind as you write the code.
+  - Read this as needed only edit the .appLogic/ files when users request changes.
+  - follow the structure as defined in the .appLogic/ files closely as possible.
 
-Coding style:
+### Coding style
   - write one line comments to make it easy for me to read your code.
   - keep the code clean and readable.
   - keep the code minimal and to the point.
@@ -13,4 +13,14 @@ Coding style:
   - use good variable names.
   - use easy to understand function names.
 
-When writing code be thorough and cover all functions interacting with the changes you are making. 
+### Frontend
+  - simple and basic frontend.
+  - use simple css and html.
+
+### Backend
+  - use typescript and node.js.
+  - prioritize using the built in libraries and frameworks.
+  - use `npm install ...` to install dependencies. avoid adding dependencies directly to the package.json file.
+
+This is a very simple project lets keep the code simple and to the point.
+Use simple and basic libraries and frameworks.

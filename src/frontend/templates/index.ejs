@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Army-GPT - AI Tools for Army Personnel</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link href="{{ url_for('static', path='css/common.css') }}" rel="stylesheet">
+    <link href="/static/css/common.css" rel="stylesheet">
     <style>
         .cost-display {
             transition: all 0.2s ease-in-out;
@@ -86,8 +86,8 @@
     </footer>
 
     <!-- JavaScript -->
-    <script src="{{ url_for('static', path='js/common.js') }}"></script>
-    <script src="{{ url_for('static', path='js/costs.js') }}"></script>
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/costs.js"></script>
     <script>
         // Initialize common features
         document.addEventListener('DOMContentLoaded', initializeCommon);

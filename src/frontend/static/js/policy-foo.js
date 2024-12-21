@@ -1,380 +1,238 @@
-// Constants
-const MAX_MESSAGES = 10;  // Maximum number of messages to keep
-let conversationHistory = [];
+// Policy Foo functionality
+let chatHistory = [];
 
-// XML Parsing Functions
-function extractAnswer(response) {
-    try {
-        const answerMatch = response.match(/<answer>([\s\S]*?)<\/answer>/);
-        return answerMatch ? answerMatch[1].trim() : response;
-    } catch (e) {
-        console.error('Error extracting answer:', e);
-        return response;
-    }
+function initializePolicyFoo() {
+    // Setup enter key handlers
+    setupKeyHandlers();
+    
+    // Initialize chat container
+    setupChatContainer();
 }
 
-function extractCitations(response) {
-    try {
-        const citationsMatch = response.match(/<citations>([\s\S]*?)<\/citations>/);
-        if (!citationsMatch) return "";
-        return citationsMatch[1].trim();
-    } catch (e) {
-        console.error('Error extracting citations:', e);
-        return "";
-    }
-}
-
-function extractFollowUp(response) {
-    try {
-        const followUpMatch = response.match(/<follow_up>([\s\S]*?)<\/follow_up>/);
-        if (!followUpMatch) return [];
-        
-        return followUpMatch[1].trim()
-            .split(/\n/)
-            .map(q => q.replace(/^-\s*/, '').trim())
-            .filter(q => q);
-    } catch (e) {
-        console.error('Error extracting follow-up:', e);
-        return [];
-    }
-}
-
-// Message History Management
-function addToHistory(role, content) {
-    conversationHistory.push({ role, content });
-    if (conversationHistory.length > MAX_MESSAGES) {
-        conversationHistory = conversationHistory.slice(-MAX_MESSAGES);
-    }
-}
-
-// UI Message Handling
-function setupMessageActions(messageElement, originalText) {
-    const editButton = messageElement.querySelector('.edit-button');
-    const resubmitButton = messageElement.querySelector('.resubmit-button');
-    const editContainer = messageElement.querySelector('.edit-container');
-    const editTextarea = messageElement.querySelector('.edit-textarea');
-    const saveButton = messageElement.querySelector('.save-button');
-    const cancelButton = messageElement.querySelector('.cancel-button');
-    const messageText = messageElement.querySelector('.message-text');
-
-    editTextarea.value = originalText;
-
-    editButton.addEventListener('click', () => {
-        messageText.style.display = 'none';
-        editContainer.style.display = 'block';
-        editTextarea.style.height = 'auto';
-        editTextarea.style.height = editTextarea.scrollHeight + 'px';
-        editTextarea.focus();
-    });
-
-    cancelButton.addEventListener('click', () => {
-        messageText.style.display = 'block';
-        editContainer.style.display = 'none';
-        editTextarea.value = originalText;
-    });
-
-    saveButton.addEventListener('click', () => {
-        const newText = editTextarea.value.trim();
-        if (!newText) return;
-
-        messageText.textContent = newText;
-        messageText.style.display = 'block';
-        editContainer.style.display = 'none';
-
-        const messageIndex = Array.from(messageElement.parentElement.children).indexOf(messageElement);
-        if (messageIndex >= 0 && messageIndex < conversationHistory.length) {
-            conversationHistory[messageIndex].content = newText;
+// Setup key handlers
+function setupKeyHandlers() {
+    const searchInput = document.getElementById('searchInput');
+    const chatInput = document.getElementById('chatInput');
+    
+    searchInput?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            searchPolicies();
         }
     });
-
-    resubmitButton.addEventListener('click', async () => {
-        const messagesContainer = document.getElementById('messagesContainer');
-        const allMessages = Array.from(messagesContainer.children);
-        const messageIndex = allMessages.indexOf(messageElement.closest('.message'));
-        
-        if (messageIndex >= 0) {
-            while (messagesContainer.children.length > messageIndex + 1) {
-                messagesContainer.lastChild.remove();
-            }
-            
-            const historyIndex = Math.floor(messageIndex / 2);
-            conversationHistory = conversationHistory.slice(0, historyIndex);
+    
+    chatInput?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
         }
-        
-        await submitQuestion(messageText.textContent.trim(), true);
-    });
-
-    editTextarea.addEventListener('input', function() {
-        this.style.height = 'auto';
-        this.style.height = this.scrollHeight + 'px';
     });
 }
 
-// Message Element Creation
-function createMessageElement(role, content) {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${role}-message ${role === 'user' ? 'bg-gray-50' : 'bg-white'} rounded-lg shadow-md max-w-3xl mx-auto`;
+// Setup chat container
+function setupChatContainer() {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+    
+    // Add welcome message
+    const welcomeMessage = {
+        role: 'assistant',
+        content: 'Hello! I can help you understand CAF policies. What would you like to know?'
+    };
+    addMessageToChat(welcomeMessage);
+}
 
-    const flexContainer = document.createElement('div');
-    flexContainer.className = 'flex items-start space-x-4 p-4';
+// Search policies
+async function searchPolicies() {
+    const input = document.getElementById('searchInput');
+    const resultsContainer = document.getElementById('searchResults');
+    if (!input || !resultsContainer) return;
+    
+    const query = input.value.trim();
+    if (!query) return;
+    
+    try {
+        // Show loading state
+        resultsContainer.innerHTML = '<div class="flex justify-center"><div class="loading-spinner"></div></div>';
+        
+        const response = await fetch('/api/policy/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query })
+        });
+        
+        if (!army.handleRateLimit(response)) return;
+        
+        const results = await response.json();
+        
+        // Clear loading state and display results
+        resultsContainer.innerHTML = '';
+        
+        if (results.length === 0) {
+            resultsContainer.innerHTML = '<p class="text-gray-500">No policies found matching your query.</p>';
+            return;
+        }
+        
+        results.forEach(result => {
+            const resultElement = document.createElement('div');
+            resultElement.className = 'search-result p-4 flex items-start gap-4 cursor-pointer';
+            resultElement.innerHTML = `
+                <div class="relevance-score bg-blue-100 text-blue-800">
+                    ${Math.round(result.relevance * 100)}%
+                </div>
+                <div>
+                    <h3 class="font-semibold">${result.title}</h3>
+                    <p class="text-sm text-gray-600">Policy ${result.number}</p>
+                </div>
+            `;
+            resultElement.onclick = () => readPolicy(result.number);
+            resultsContainer.appendChild(resultElement);
+        });
+    } catch (error) {
+        console.error('Search error:', error);
+        army.showError('Failed to search policies. Please try again.');
+    }
+}
 
-    const avatarDiv = document.createElement('div');
-    avatarDiv.className = 'flex-shrink-0';
-    const avatarIcon = document.createElement('i');
-    avatarIcon.className = `fas ${role === 'user' ? 'fa-user' : 'fa-robot'} text-gray-400`;
-    avatarDiv.appendChild(avatarIcon);
-
-    const contentDiv = document.createElement('div');
-    contentDiv.className = 'flex-1 min-w-0';
-
-    const messageContent = document.createElement('div');
-    messageContent.className = role === 'user' ? 'message-content' : 'message-content prose max-w-none';
-
-    if (role === 'user') {
-        const messageHeader = document.createElement('div');
-        messageHeader.className = 'flex justify-between items-start group';
-
-        const messageText = document.createElement('p');
-        messageText.className = 'message-text text-gray-900';
-        messageText.textContent = content;
-
-        const actionsDiv = document.createElement('div');
-        actionsDiv.className = 'flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity';
-
-        const editButton = document.createElement('button');
-        editButton.className = 'edit-button text-gray-400 hover:text-blue-500';
-        editButton.innerHTML = '<i class="fas fa-edit"></i>';
-
-        const resubmitButton = document.createElement('button');
-        resubmitButton.className = 'resubmit-button text-gray-400 hover:text-blue-500';
-        resubmitButton.innerHTML = '<i class="fas fa-redo-alt"></i>';
-
-        actionsDiv.appendChild(editButton);
-        actionsDiv.appendChild(resubmitButton);
-
-        messageHeader.appendChild(messageText);
-        messageHeader.appendChild(actionsDiv);
-        messageContent.appendChild(messageHeader);
-
-        const editContainer = document.createElement('div');
-        editContainer.className = 'edit-container hidden mt-2';
-        editContainer.innerHTML = `
-            <textarea class="edit-textarea w-full p-2 border rounded-md"></textarea>
-            <div class="flex justify-end space-x-2 mt-2">
-                <button class="save-button text-green-500 hover:text-green-600">
-                    <i class="fas fa-check"></i>
-                </button>
-                <button class="cancel-button text-red-500 hover:text-red-600">
-                    <i class="fas fa-times"></i>
-                </button>
+// Read policy content
+async function readPolicy(policyNumber) {
+    const contentSection = document.getElementById('policyContent');
+    const contentContainer = document.getElementById('policyText');
+    if (!contentSection || !contentContainer) return;
+    
+    try {
+        // Show loading state
+        contentSection.classList.remove('hidden');
+        contentContainer.innerHTML = '<div class="flex justify-center"><div class="loading-spinner"></div></div>';
+        
+        const response = await fetch('/api/policy/read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ policyNumber, section: 'all' })
+        });
+        
+        if (!army.handleRateLimit(response)) return;
+        
+        const content = await response.json();
+        
+        // Display content
+        contentContainer.innerHTML = `
+            <div class="policy-content">
+                <h2 class="text-2xl font-bold mb-4">Policy ${content.policyNumber}</h2>
+                <div class="policy-section">
+                    ${content.content}
+                </div>
             </div>
         `;
-        messageContent.appendChild(editContainer);
-
-        setupMessageActions(messageContent, content);
+        
+        // Scroll to content
+        contentSection.scrollIntoView({ behavior: 'smooth' });
+    } catch (error) {
+        console.error('Read error:', error);
+        army.showError('Failed to load policy content. Please try again.');
     }
-
-    contentDiv.appendChild(messageContent);
-    flexContainer.appendChild(avatarDiv);
-    flexContainer.appendChild(contentDiv);
-    messageDiv.appendChild(flexContainer);
-
-    return messageDiv;
 }
 
-// Question Submission and Response Handling
-async function submitQuestion(question, isResubmission = false) {
-    const textarea = document.getElementById('questionInput');
-    const messagesContainer = document.getElementById('messagesContainer');
-    const submitButton = document.querySelector('button[type="submit"]');
+// Send chat message
+async function sendMessage() {
+    const input = document.getElementById('chatInput');
+    const container = document.getElementById('chatMessages');
+    if (!input || !container) return;
     
-    textarea.disabled = true;
-    submitButton.disabled = true;
+    const message = input.value.trim();
+    if (!message) return;
     
     try {
-        if (!isResubmission) {
-            addToHistory('user', question);
-            messagesContainer.appendChild(createMessageElement('user', question));
-        }
-
-        const assistantMessage = createMessageElement('assistant', '');
-        messagesContainer.appendChild(assistantMessage);
-        const messageContent = assistantMessage.querySelector('.message-content');
+        // Add user message
+        const userMessage = { role: 'user', content: message };
+        addMessageToChat(userMessage);
+        chatHistory.push(userMessage);
         
-        const rawStream = document.createElement('div');
-        rawStream.className = 'raw-stream whitespace-pre-wrap font-mono text-sm';
-        messageContent.appendChild(rawStream);
-
-        const response = await fetch('/llm/policyfoo/generate', {
+        // Clear input
+        input.value = '';
+        
+        // Show typing indicator
+        const typingElement = document.createElement('div');
+        typingElement.className = 'message assistant-message fade-enter';
+        typingElement.innerHTML = '<div class="loading-spinner"></div>';
+        container.appendChild(typingElement);
+        
+        // Scroll to bottom
+        container.scrollTop = container.scrollHeight;
+        
+        // Send to API
+        const response = await fetch('/api/policy/chat', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'text/plain'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                content: question,
-                conversation_history: conversationHistory
+                message,
+                history: chatHistory
             })
         });
-
-        if (!response.ok) {
-            if (response.status === 429) {
-                const errorData = await response.json();
-                const hourlyRemaining = errorData.error.details.hourly_remaining;
-                const dailyRemaining = errorData.error.details.daily_remaining;
-                
-                const errorMessage = document.createElement('div');
-                errorMessage.className = 'bg-white rounded-lg shadow-md p-6 max-w-3xl mx-auto';
-                errorMessage.innerHTML = `
-                    <div class="p-4 bg-amber-100 text-amber-800 rounded-lg">
-                        <p class="font-semibold mb-2">Rate Limit Reached</p>
-                        <p>You've reached the request limit. Please wait before trying again.</p>
-                        <p class="mt-2 text-sm">
-                            Remaining requests:<br>
-                            Hourly: ${hourlyRemaining}<br>
-                            Daily: ${dailyRemaining}
-                        </p>
-                    </div>
-                `;
-                messagesContainer.appendChild(errorMessage);
-                return;
-            }
-            throw new Error(`HTTP error! status: ${response.status}`);
+        
+        if (!army.handleRateLimit(response)) {
+            typingElement.remove();
+            return;
         }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let fullResponse = '';
-
-        try {
-            while (true) {
-                const {value, done} = await reader.read();
-                if (done) break;
-                
-                const chunk = decoder.decode(value, {stream: true});
-                fullResponse += chunk;
-                rawStream.textContent = fullResponse;
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
-            }
-        } finally {
-            const remaining = decoder.decode();
-            if (remaining) {
-                fullResponse += remaining;
-                rawStream.textContent = fullResponse;
-            }
+        
+        const result = await response.json();
+        
+        // Remove typing indicator
+        typingElement.remove();
+        
+        // Add assistant message
+        const assistantMessage = {
+            role: 'assistant',
+            content: result.answer,
+            citations: result.citations
+        };
+        addMessageToChat(assistantMessage);
+        chatHistory.push({ role: 'assistant', content: result.answer });
+        
+        // Handle follow-up if provided
+        if (result.followUp) {
+            setTimeout(() => {
+                const followUpMessage = {
+                    role: 'assistant',
+                    content: result.followUp
+                };
+                addMessageToChat(followUpMessage);
+                chatHistory.push(followUpMessage);
+            }, 500);
         }
-
-        // Update rate limits after response is complete
-        try {
-            const limitsResponse = await fetch('/llm/limits');
-            const limitsData = await limitsResponse.json();
-            updateRateLimits(limitsData);
-        } catch (error) {
-            console.error('Error updating rate limits:', error);
-        }
-
-        const formattedContent = document.createElement('div');
-        formattedContent.className = 'formatted-content hidden';
-        messageContent.appendChild(formattedContent);
-
-        const answer = extractAnswer(fullResponse);
-        const citations = extractCitations(fullResponse);
-        const followUpQuestions = extractFollowUp(fullResponse);
-
-        const answerSection = document.createElement('div');
-        answerSection.className = 'answer-section prose max-w-none';
-        answerSection.innerHTML = `<p class="text-gray-900">${answer}</p>`;
-        formattedContent.appendChild(answerSection);
-
-        if (citations) {
-            const citationsSection = document.createElement('div');
-            citationsSection.className = 'citations-section text-sm text-gray-600 mt-2';
-            citationsSection.innerHTML = `<strong>References:</strong><br>${citations.replace(/\n/g, '<br>')}`;
-            formattedContent.appendChild(citationsSection);
-        }
-
-        if (followUpQuestions.length > 0) {
-            const followUpSection = document.createElement('div');
-            followUpSection.className = 'follow-up-section mt-4';
-            followUpSection.innerHTML = '<div class="text-sm text-gray-600"><strong>Follow-up Questions:</strong></div>';
-            
-            const suggestedFollowups = document.createElement('div');
-            suggestedFollowups.className = 'suggested-followups flex flex-wrap gap-2 mt-2';
-            
-            followUpQuestions.forEach(question => {
-                const chip = document.createElement('div');
-                chip.className = 'followup-chip px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition-colors cursor-pointer';
-                chip.textContent = question;
-                chip.addEventListener('click', () => {
-                    textarea.value = question;
-                    textarea.focus();
-                });
-                suggestedFollowups.appendChild(chip);
-            });
-            
-            followUpSection.appendChild(suggestedFollowups);
-            formattedContent.appendChild(followUpSection);
-        }
-
-        const toggleButton = document.createElement('button');
-        toggleButton.className = 'toggle-view-btn text-sm text-blue-600 hover:text-blue-800 mt-2';
-        toggleButton.textContent = 'Show raw response';
-        messageContent.insertBefore(toggleButton, formattedContent);
-
-        // Auto-switch to formatted view
-        rawStream.classList.add('hidden');
-        formattedContent.classList.remove('hidden');
-
-        toggleButton.addEventListener('click', () => {
-            const isRawVisible = !rawStream.classList.contains('hidden');
-            if (isRawVisible) {
-                rawStream.classList.add('hidden');
-                formattedContent.classList.remove('hidden');
-                toggleButton.textContent = 'Show raw response';
-            } else {
-                rawStream.classList.remove('hidden');
-                formattedContent.classList.add('hidden');
-                toggleButton.textContent = 'Show formatted view';
-            }
-        });
-
-        addToHistory('assistant', fullResponse);
-
     } catch (error) {
-        console.error('Error:', error);
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'text-red-500 p-4';
-        errorDiv.textContent = `Error: ${error.message}`;
-        messagesContainer.appendChild(errorDiv);
-    } finally {
-        textarea.disabled = false;
-        submitButton.disabled = false;
-        textarea.value = '';
-        textarea.style.height = 'auto';
-        textarea.focus();
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        console.error('Chat error:', error);
+        army.showError('Failed to send message. Please try again.');
     }
 }
 
-// Initialization
-function initializePolicyFoo() {
-    document.getElementById('chatForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const textarea = document.getElementById('questionInput');
-        const question = textarea.value.trim();
-        if (!question) return;
-        
-        textarea.value = '';
-        await submitQuestion(question);
+// Add message to chat
+function addMessageToChat(message) {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+    
+    const messageElement = document.createElement('div');
+    messageElement.className = `message ${message.role}-message fade-enter`;
+    
+    let content = `<div class="message-content">${message.content}</div>`;
+    
+    if (message.citations) {
+        content += `
+            <div class="citations">
+                Sources:
+                ${message.citations.map(cite => `<div>${cite}</div>`).join('')}
+            </div>
+        `;
+    }
+    
+    messageElement.innerHTML = content;
+    container.appendChild(messageElement);
+    
+    // Scroll to bottom
+    container.scrollTop = container.scrollHeight;
+    
+    // Trigger animation
+    requestAnimationFrame(() => {
+        messageElement.classList.add('fade-enter-active');
     });
-
-    const textarea = document.getElementById('questionInput');
-    textarea.addEventListener('input', function() {
-        this.style.height = 'auto';
-        this.style.height = Math.min(this.scrollHeight, 200) + 'px';
-    });
-
-    initializeCommon();
-}
-
-document.addEventListener('DOMContentLoaded', initializePolicyFoo); 
+} 

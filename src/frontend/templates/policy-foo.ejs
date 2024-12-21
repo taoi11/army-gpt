@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Policy Foo - Army-GPT</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="/static/css/common.css" rel="stylesheet">
+    <link href="/static/css/policy-foo.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <!-- Header -->
+    <header class="bg-gray-800 text-white">
+        <nav class="container mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <a href="/" class="text-xl font-bold">Army-GPT</a>
+                    <div id="creditsBanner" class="hidden px-2 py-1 bg-amber-500 text-white text-sm rounded">
+                        ⚠️ Using Slow and Stupid AI - Out of Money for the Fast and Smart AI
+                    </div>
+                </div>
+                <div class="space-x-4">
+                    <a href="/pace-notes" class="hover:text-gray-300 transition-colors">Pace Notes</a>
+                    <a href="/policy-foo" class="hover:text-gray-300 transition-colors">Policy foo</a>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-6 py-8">
+        <!-- Search Section -->
+        <section class="mb-8">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-xl font-bold mb-4">Search Policies</h2>
+                <div class="flex gap-4">
+                    <input type="text" 
+                           id="searchInput"
+                           placeholder="Enter your search query..."
+                           class="flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    <button onclick="searchPolicies()"
+                            class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition-colors">
+                        Search
+                    </button>
+                </div>
+                <!-- Search Results -->
+                <div id="searchResults" class="mt-4 space-y-4"></div>
+            </div>
+        </section>
+
+        <!-- Policy Content Section -->
+        <section class="mb-8 hidden" id="policyContent">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-xl font-bold mb-4">Policy Content</h2>
+                <div id="policyText" class="prose max-w-none"></div>
+            </div>
+        </section>
+
+        <!-- Chat Section -->
+        <section>
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-xl font-bold mb-4">Ask about Policies</h2>
+                <div id="chatMessages" class="space-y-4 mb-4 max-h-96 overflow-y-auto"></div>
+                <div class="flex gap-4">
+                    <textarea id="chatInput"
+                             placeholder="Ask a question about the policies..."
+                             class="flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[80px] resize-none"></textarea>
+                    <button onclick="sendMessage()"
+                            class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition-colors h-fit">
+                        Send
+                    </button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white text-center py-4 mt-8">
+        <p class="text-sm">
+            Disclaimer: Use at your own discretion.
+        </p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/policy-foo.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeCommon();
+            initializePolicyFoo();
+        });
+    </script>
+</body>
+</html> 

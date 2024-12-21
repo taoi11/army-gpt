@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pace Notes - Army-GPT</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="/static/css/common.css" rel="stylesheet">
+    <link href="/static/css/pace-notes.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <!-- Header -->
+    <header class="bg-gray-800 text-white">
+        <nav class="container mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <a href="/" class="text-xl font-bold">Army-GPT</a>
+                    <div id="creditsBanner" class="hidden px-2 py-1 bg-amber-500 text-white text-sm rounded">
+                        ⚠️ Using Slow and Stupid AI - Out of Money for the Fast and Smart AI
+                    </div>
+                </div>
+                <div class="space-x-4">
+                    <a href="/pace-notes" class="hover:text-gray-300 transition-colors">Pace Notes</a>
+                    <a href="/policy-foo" class="hover:text-gray-300 transition-colors">Policy foo</a>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-6 py-8">
+        <!-- Input Section -->
+        <section class="mb-8">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-xl font-bold mb-4">Generate Pace Notes</h2>
+                <div class="space-y-4">
+                    <!-- Context Input -->
+                    <div>
+                        <label for="contextInput" class="block text-sm font-medium text-gray-700 mb-2">
+                            Context
+                            <span class="text-gray-500 ml-2" id="contextCounter">0/2000</span>
+                        </label>
+                        <textarea id="contextInput"
+                                placeholder="Provide context about the member and situation..."
+                                maxlength="2000"
+                                class="w-full p-3 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[120px] resize-y"></textarea>
+                        <p class="mt-1 text-sm text-gray-500">
+                            Provide clear context about the member and situation. This helps generate more accurate pace notes.
+                        </p>
+                    </div>
+
+                    <!-- Key Points -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Key Points
+                            <span class="text-gray-500 ml-2" id="keyPointsCounter">0/5</span>
+                        </label>
+                        <div id="keyPoints" class="space-y-2">
+                            <div class="flex gap-2">
+                                <input type="text" 
+                                       class="key-point flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                       maxlength="200"
+                                       placeholder="Add a key point...">
+                                <button onclick="addKeyPoint()"
+                                        class="bg-green-500 text-white px-4 rounded hover:bg-green-600 transition-colors">
+                                    +
+                                </button>
+                            </div>
+                        </div>
+                        <p class="mt-1 text-sm text-gray-500">
+                            Add up to 5 key points that should be addressed in the pace notes.
+                        </p>
+                    </div>
+
+                    <!-- Options -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="toneSelect" class="block text-sm font-medium text-gray-700 mb-2">
+                                Tone
+                            </label>
+                            <select id="toneSelect" 
+                                    class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <option value="professional">Professional</option>
+                                <option value="supportive">Supportive</option>
+                                <option value="direct">Direct</option>
+                                <option value="constructive">Constructive</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="lengthSelect" class="block text-sm font-medium text-gray-700 mb-2">
+                                Length
+                            </label>
+                            <select id="lengthSelect"
+                                    class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <option value="concise">Concise</option>
+                                <option value="detailed">Detailed</option>
+                                <option value="comprehensive">Comprehensive</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Generate Button -->
+                    <div class="flex justify-end">
+                        <button onclick="generatePaceNotes()"
+                                class="bg-blue-500 text-white px-8 py-3 rounded-lg hover:bg-blue-600 transition-colors">
+                            Generate
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Output Section -->
+        <section id="outputSection" class="hidden">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold">Generated Pace Notes</h2>
+                    <button onclick="copyToClipboard()"
+                            class="text-blue-500 hover:text-blue-600 transition-colors">
+                        Copy to Clipboard
+                    </button>
+                </div>
+                <div id="generatedContent" class="prose max-w-none"></div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white text-center py-4 mt-8">
+        <p class="text-sm">
+            Disclaimer: Use at your own discretion.
+        </p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/pace-notes.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeCommon();
+            initializePaceNotes();
+        });
+    </script>
+</body>
+</html> 
